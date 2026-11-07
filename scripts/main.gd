@@ -115,8 +115,21 @@ func _ready() -> void:
 		new_run()
 
 
+## 상대 출전 풀 (data/opponent_pool.json, 한 번만 읽는다)
+static var _pool: OpponentPool = null
+static var _pool_loaded: bool = false
+
+
+static func opponent_pool() -> OpponentPool:
+	if not _pool_loaded:
+		_pool_loaded = true
+		_pool = OpponentPool.load_file()
+	return _pool
+
+
 func new_run(seed_value: int = 0) -> void:
 	state = GameState.new(seed_value)
+	state.opponents = opponent_pool()
 	records = Records.load_records(records_path)
 	selected = null
 	message = ""
@@ -140,7 +153,9 @@ func refresh() -> void:
 	_build_header()
 	if not summary.is_empty() and not battling:
 		_layout_sheet(false)
-		if summary.get("game_over", false):
+		if summary.get("victory", false):
+			_add_victory_panel()
+		elif summary.get("game_over", false):
 			_add_game_over_panel()
 		else:
 			_add_result_panel()
@@ -605,6 +620,22 @@ func _add_game_over_panel() -> void:
 	action_bar.add_child(_action_button("새로 시작", _on_new_run, "PrimaryButton", "refresh"))
 
 
+## 우승: 출전 풀에 다음 라운드 상대가 없다 (모든 라운드를 이겨 냄)
+func _add_victory_panel() -> void:
+	var panel := _banner(S.GOLD)
+	var box: VBoxContainer = panel.get_child(0)
+	box.add_child(_center(GameIcon.make("star", 72, S.GOLD)))
+	box.add_child(_label("우승!", 64, S.GOLD, false, true, true))
+	box.add_child(_label("라운드 %d 까지 모든 상대를 이겼습니다" % summary["round_played"], 24, S.TEXT, false, true, true))
+	var pool_meta: Dictionary = state.opponents.meta if state.opponents != null else {}
+	if pool_meta.has("players"):
+		box.add_child(_label("봇 %d명 중 마지막까지 살아남은 상대를 꺾었습니다" % int(pool_meta["players"]), 18, S.MUTED, false, false, true))
+	box.add_child(_line_icon("heart", "남은 체력 %d" % state.hp, S.GREEN))
+	box.add_child(_line_icon("flag", "%d번째 판" % records.get("runs", 0), S.MUTED))
+	popup.add_child(panel)
+	action_bar.add_child(_action_button("새로 시작", _on_new_run, "PrimaryButton", "refresh"))
+
+
 # ── 입력 처리 ─────────────────────────────────────────
 
 ## 전장 탭: 같은 유닛을 다시 누르면 상점으로 돌아간다.
@@ -784,7 +815,7 @@ func _on_battle_finished(_winner: String) -> void:
 		return
 	battling = false
 	summary = state.apply_result(last_result)
-	if summary["game_over"]:
+	if summary["game_over"] or summary.get("victory", false):
 		records = Records.submit(summary["round_played"], records_path)
 	refresh()
 
@@ -860,6 +891,10 @@ func _setup_demo(kind: String) -> void:
 	elif kind == "result":
 		last_result = state.fight()
 		summary = state.apply_result(last_result)
+	elif kind == "victory":
+		state.hp = 64
+		summary = {"won": true, "hp_loss": 0, "survivors": 0, "streak": 5, "round_played": 24, "income": 7, "bonus": 4, "game_over": false, "victory": true}
+		records = {"best_round": 24, "runs": 6, "last_round": 24}
 	elif kind == "gameover":
 		state.hp = 1
 		summary = {"won": false, "hp_loss": 16, "survivors": 2, "streak": -3, "round_played": 9, "income": 0, "bonus": 0, "game_over": true}

@@ -248,12 +248,31 @@ func rotate(item: Item) -> bool:
 
 # ── 전투 ──────────────────────────────────────────────
 
+## 상대 출전 풀 (OpponentPool). 없으면 EnemyGen 으로 상대를 만든다.
+var opponents: OpponentPool = null
+## 풀에 다음 라운드 상대가 없어 이긴 상태
+var victory: bool = false
+var _enemy_cache_key: int = 0
+var _enemy_cache: Array[Backpack] = []
+
+
 func enemy_team() -> Array[Backpack]:
-	return EnemyGen.generate(round_no, run_seed)
+	var key := hash([round_no, run_seed, opponents != null])
+	if _enemy_cache_key != key or _enemy_cache.is_empty():
+		_enemy_cache_key = key
+		if opponents != null and opponents.has_round(round_no):
+			_enemy_cache = opponents.team_for(round_no, run_seed)
+		else:
+			_enemy_cache = EnemyGen.generate(round_no, run_seed)
+	# 같은 라운드 안에서는 같은 팀 (화면이 여러 번 물어봐도)
+	var out: Array[Backpack] = []
+	for p in _enemy_cache:
+		out.append(p)
+	return out
 
 
 func can_fight() -> bool:
-	return not game_over and not units.is_empty()
+	return not game_over and not victory and not units.is_empty()
 
 
 func fight() -> Dictionary:
@@ -270,12 +289,17 @@ static func surviving(result: Dictionary, side: int) -> int:
 	return n
 
 
-## 전투 결과 반영: 체력, 연속 기록, 수입, 다음 라운드, 상점 새로고침.
-## 반환: {won, hp_loss, survivors, income, bonus, streak, round_played, game_over}
+## 전투 결과 반영(우리가 a 쪽). apply_outcome 참고.
 func apply_result(result: Dictionary) -> Dictionary:
 	var won: bool = result["winner"] == "a"
+	return apply_outcome(won, 0 if won else surviving(result, 1))
+
+
+## 승패와 (졌을 때) 살아남은 상대 유닛 수로 체력·연속 기록·수입·다음 라운드·상점을 갱신한다.
+## 출전 풀 수집(봇끼리 대전)에서도 양쪽 플레이어에 각각 쓴다.
+## 반환: {won, hp_loss, survivors, income, bonus, streak, round_played, game_over, victory}
+func apply_outcome(won: bool, survivors: int) -> Dictionary:
 	var played := round_no
-	var survivors := 0 if won else surviving(result, 1)
 	var loss := 0 if won else hp_loss_for(survivors)
 	hp -= loss
 	if won:
@@ -284,7 +308,7 @@ func apply_result(result: Dictionary) -> Dictionary:
 		streak = streak - 1 if streak < 0 else -1
 	var summary := {
 		"won": won, "hp_loss": loss, "survivors": survivors, "streak": streak,
-		"round_played": played, "income": 0, "bonus": 0, "game_over": false,
+		"round_played": played, "income": 0, "bonus": 0, "game_over": false, "victory": false,
 	}
 	if hp <= 0:
 		hp = 0
@@ -297,4 +321,8 @@ func apply_result(result: Dictionary) -> Dictionary:
 	summary["bonus"] = streak_bonus(streak)
 	round_no += 1
 	refill_shop()
+	# 출전 풀에 다음 라운드 상대가 없으면 우승
+	if opponents != null and not opponents.has_round(round_no):
+		victory = true
+		summary["victory"] = true
 	return summary
