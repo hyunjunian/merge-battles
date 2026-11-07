@@ -194,21 +194,22 @@ func _build_sheet_head() -> void:
 			var u := state.units[inspect_unit]
 			sheet_head.add_child(_label(u.display_name(), 22, u.color().lightened(0.35), false, true))
 	else:
-		sheet_head.add_child(GameIcon.make("coin", 30))
 		sheet_head.add_child(_label("상점", 24, S.GOLD, false, true))
+		sheet_head.add_child(_badge("coin", str(state.gold), S.GOLD))
 		var reroll := _button("새로고침 %d원" % GameState.REROLL_COST, _on_reroll)
 		reroll.disabled = state.gold < GameState.REROLL_COST
 		sheet_head.add_child(reroll)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sheet_head.add_child(spacer)
-	# 시트 오른쪽 위: 전투 시작
+	# 시트 오른쪽 위: 체력 + 전투 시작
+	sheet_head.add_child(_hp_widget())
 	var fight := _button("전투 시작", _on_fight)
 	fight.theme_type_variation = "GoButton"
-	fight.custom_minimum_size = Vector2(190, 56)
+	fight.custom_minimum_size = Vector2(176, 56)
 	fight.add_theme_font_size_override("font_size", 22)
-	var ic := GameIcon.make("sword", 26, Color.WHITE)
-	ic.position = Vector2(14, 12)
+	var ic := GameIcon.make("sword", 24, Color.WHITE)
+	ic.position = Vector2(10, 13)
 	fight.add_child(ic)
 	fight.disabled = not state.can_fight()
 	sheet_head.add_child(fight)
@@ -228,8 +229,6 @@ func _build_header() -> void:
 	title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
-	row.add_child(_hp_bar())
-	row.add_child(_badge("coin", str(state.gold), S.GOLD))
 	var st := streak_text(state.streak)
 	if st != "":
 		row.add_child(_badge("flame" if state.streak > 0 else "skull", st, Color(1.0, 0.6, 0.2) if state.streak > 0 else S.MUTED))
@@ -253,30 +252,29 @@ func _build_header() -> void:
 	header.add_child(chips)
 
 
-## 하트 + 체력 바 + 숫자
-func _hp_bar() -> Control:
+## 전투 시작 버튼 옆 체력: 하트 + 굵은 숫자 + 작은 막대 (남은 비율에 따라 초록·노랑·빨강)
+func _hp_widget() -> Control:
+	var ratio := clampf(float(state.hp) / GameState.START_HP, 0.0, 1.0)
+	var col := S.GREEN if ratio > 0.5 else (S.GOLD if ratio > 0.25 else S.RED)
 	var box := HBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
-	box.add_child(GameIcon.make("heart", 30))
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(GameIcon.make("heart", 34))
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 2)
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_child(_label("%d" % state.hp, 22, col, false, true))
 	var bar := PanelContainer.new()
-	bar.custom_minimum_size = Vector2(170, 32)
-	bar.add_theme_stylebox_override("panel", S.box(Color(0, 0, 0, 0.55), Color(1, 1, 1, 0.18), 2, 10, -1, 0.0))
+	bar.custom_minimum_size = Vector2(60, 10)
+	bar.add_theme_stylebox_override("panel", S.box(Color(0, 0, 0, 0.6), Color(1, 1, 1, 0.15), 1, 4, -1, 1.0))
 	var fill := ColorRect.new()
-	var ratio := clampf(float(state.hp) / GameState.START_HP, 0.0, 1.0)
-	fill.color = S.GREEN if ratio > 0.5 else (S.GOLD if ratio > 0.25 else S.RED)
-	fill.custom_minimum_size = Vector2(maxf(2.0, 162.0 * ratio), 24)
+	fill.color = col
+	fill.custom_minimum_size = Vector2(maxf(2.0, 58.0 * ratio), 8)
 	fill.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	fill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var margin := MarginContainer.new()
-	for side: String in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 4)
-	margin.add_child(fill)
-	bar.add_child(margin)
-	var num := _label("%d / %d" % [state.hp, GameState.START_HP], 17, Color.WHITE, false, true)
-	num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	num.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	bar.add_child(num)
-	box.add_child(bar)
+	bar.add_child(fill)
+	v.add_child(bar)
+	box.add_child(v)
+	box.tooltip_text = "체력 %d / %d" % [state.hp, GameState.START_HP]
 	return box
 
 
