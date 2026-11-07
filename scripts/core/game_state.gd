@@ -219,6 +219,19 @@ func unequip(item: Item) -> bool:
 	return true
 
 
+## 유닛 가방의 아이템을 모두 보유함으로. 뺀 개수를 돌려준다.
+func unequip_all(unit_idx: int) -> int:
+	if game_over or unit_idx < 0 or unit_idx >= units.size():
+		return 0
+	var pack := units[unit_idx]
+	var n := 0
+	for item in pack.items():
+		pack.remove(item)
+		inventory.append(item)
+		n += 1
+	return n
+
+
 ## 회전. 가방 안에 있으면 같은 자리에서 돌아갈 수 있을 때만.
 func rotate(item: Item) -> bool:
 	if not item.is_rotatable():

@@ -282,3 +282,16 @@ func test_frames_record_cooldowns() -> void:
 	for k: String in BattleSim.FRAME_KEYS:
 		check(u.has(k), "기록에 %s" % k)
 	check_eq(u["spd"], a[0]["spd"])
+
+
+func test_unequip_all_button_flow() -> void:
+	var main := _spawn()
+	var state: GameState = main.state
+	var club := Item.new("club")
+	state.inventory.append(club)
+	state.equip(club, 0, Vector2i(0, 0))
+	main._on_field_tapped("a", 0)
+	main._on_unequip_all()
+	check(state.units[0].is_empty(), "모두 빼기")
+	check(state.inventory.has(club))
+	free_later(main)

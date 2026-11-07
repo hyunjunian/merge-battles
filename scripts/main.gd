@@ -390,9 +390,17 @@ func _add_unit_editor() -> void:
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	info.add_child(spacer)
 	if not battling:
+		var actions := HBoxContainer.new()
+		actions.add_theme_constant_override("separation", 8)
+		var strip := _button("모두 빼기", _on_unequip_all)
+		strip.disabled = pack.is_empty()
+		strip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		actions.add_child(strip)
 		var sell := _button("판매 +%d원" % pack.sell_price(), _on_sell_unit)
 		sell.theme_type_variation = "DangerButton"
-		info.add_child(sell)
+		sell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		actions.add_child(sell)
+		info.add_child(actions)
 	row.add_child(info)
 	content.add_child(panel)
 	if battling:
@@ -684,6 +692,15 @@ func _on_sell_item() -> void:
 		return
 	if selected != null and state.sell_item(selected):
 		selected = null
+	refresh()
+
+
+func _on_unequip_all() -> void:
+	if battling or inspect_unit < 0:
+		return
+	var n := state.unequip_all(inspect_unit)
+	selected = null
+	message = "아이템 %d개를 보유함으로 뺐습니다." % n if n > 0 else ""
 	refresh()
 
 

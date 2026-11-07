@@ -223,3 +223,19 @@ func test_place_own_picks_nearest_free_spot() -> void:
 	check(not BattleSim.overlaps(q, others), "빈자리")
 	check(q.distance_to(Vector2(0.1, 3.0)) < BattleSim.MIN_GAP + 0.2, "가까운 곳")
 	check_eq(BattleSim.place_own(Vector2(2, 5), others), Vector2(2, 5), "빈 곳은 그대로")
+
+
+func test_unequip_all_returns_items() -> void:
+	var gs := GameState.new(1)
+	gs.shop[0] = {"kind": "unit", "id": "soldier"}
+	gs.gold = 50
+	gs.buy(0)
+	for id in ["sword", "apple"]:
+		var it := Item.new(id)
+		gs.inventory.append(it)
+		gs.equip(it, 1, gs.units[1].find_spot(it))
+	check_eq(gs.inventory.size(), 0)
+	check_eq(gs.unequip_all(1), 2, "두 개 뺌")
+	check(gs.units[1].is_empty(), "가방 비움")
+	check_eq(gs.inventory.size(), 2, "보유함으로")
+	check_eq(gs.unequip_all(1), 0, "빈 가방은 0")
