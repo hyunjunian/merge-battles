@@ -21,6 +21,7 @@ const UNIT_CHANCE := 0.4
 const REROLL_COST := 1
 const ENEMY_REROLL_COST := 1
 const INTEREST_PER := 10
+const MAX_INTEREST := 5
 
 var hp: int = START_HP
 var gold: int = START_GOLD
@@ -56,9 +57,9 @@ static func income_for(streak_value: int) -> int:
 	return BASE_INCOME + streak_bonus(streak_value)
 
 
-## 이자: 전투가 끝났을 때 가진 돈 10원마다 1원
+## 이자: 전투가 끝났을 때 가진 돈 10원마다 1원, 최대 MAX_INTEREST
 static func interest_for(gold_value: int) -> int:
-	return maxi(0, gold_value) / INTEREST_PER
+	return mini(maxi(0, gold_value) / INTEREST_PER, MAX_INTEREST)
 
 
 ## 지면 잃는 체력 = 그 라운드 수

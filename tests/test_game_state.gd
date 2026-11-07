@@ -286,6 +286,8 @@ func test_interest_per_ten_gold() -> void:
 	check_eq(GameState.interest_for(10), 1)
 	check_eq(GameState.interest_for(27), 2)
 	check_eq(GameState.interest_for(-3), 0)
+	check_eq(GameState.interest_for(59), 5)
+	check_eq(GameState.interest_for(120), 5, "이자는 최대 5원")
 	var gs := GameState.new(3)
 	gs.gold = 23
 	var s := gs.apply_outcome(true)
