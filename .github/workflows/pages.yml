@@ -74,3 +74,6 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # 첫 배포는 파일 동기화(syncing_files)가 10분(기본값)을 넘기기도 한다.
+          timeout: 1800000
