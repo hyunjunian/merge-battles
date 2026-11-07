@@ -33,6 +33,7 @@ var last_result: Dictionary = {}
 ## 전투가 끝난 뒤 보여 줄 GameState.apply_result() 요약
 var summary: Dictionary = {}
 var _laid_out: bool = false
+var _fit_token: int = 0
 
 ## 화면 제목 (테스트에서 확인한다)
 @onready var title: Label = $Title
@@ -134,11 +135,7 @@ func refresh() -> void:
 	if inspect_unit >= state.units.size():
 		inspect_unit = -1
 	_build_header()
-	if battling:
-		_layout_sheet(false)
-		action_bar.add_child(_action_button("2배속 켜짐" if fast else "2배속", _on_toggle_fast, "PrimaryButton" if fast else "Button", "bolt"))
-		return
-	if not summary.is_empty():
+	if not summary.is_empty() and not battling:
 		_layout_sheet(false)
 		if summary.get("game_over", false):
 			_add_game_over_panel()
@@ -146,20 +143,25 @@ func refresh() -> void:
 			_add_result_panel()
 		return
 	_build_sheet_head()
-	_refresh_field()
+	if battling:
+		# 전투 중: 전장은 재생 중이라 다시 만들지 않고 강조만 바꾼다
+		_refresh_highlight()
+	else:
+		_refresh_field()
 	if inspect_enemy >= 0:
 		_add_enemy_detail()
 	elif inspect_unit >= 0:
 		_add_unit_editor()
-		_add_inventory()
-		_add_selection_panel()
+		if not battling:
+			_add_inventory()
+			_add_selection_panel()
 	else:
 		_add_shop()
 	if message != "":
 		var m := _label(message, 17, S.RED, true)
 		content.add_child(m)
-	# 상점은 내용 높이에 딱 맞추고(아래 여백 없음), 유닛 정보·정찰은 최대 높이에 스크롤
-	_layout_sheet(true, inspect_unit < 0 and inspect_enemy < 0)
+	# 상점과 전투 중 상세는 내용 높이에 딱 맞추고(아래 여백 없음), 편성 중 유닛 정보·정찰은 최대 높이에 스크롤
+	_layout_sheet(true, battling or (inspect_unit < 0 and inspect_enemy < 0))
 
 
 ## 시트 보이기와 카메라 구도를 맞춘다. fit 이면 시트 높이를 내용에 맞춘다.
@@ -168,12 +170,30 @@ func _layout_sheet(show: bool, fit: bool = false) -> void:
 	var h := SHEET_OPEN_HEIGHT
 	if show and fit:
 		h = minf(SHEET_OPEN_HEIGHT, sheet_fit_height())
+	_apply_sheet_height(show, h)
+	if show and fit:
+		_refit_next_frame()
+
+
+func _apply_sheet_height(show: bool, h: float) -> void:
 	sheet.offset_bottom = -SHEET_BOTTOM
 	sheet.offset_top = -(SHEET_BOTTOM + h)
 	var bottom := (S_VIEW_HEIGHT - SHEET_BOTTOM - h) if show else BattleView3D.FULL_BOTTOM_Y
 	# 첫 화면은 바로, 그 뒤엔 부드럽게 카메라를 옮긴다.
 	battle_view.set_framing(BattleView3D.framing_for_bottom(bottom), _laid_out)
 	_laid_out = true
+
+
+## 줄바꿈 글자는 폭이 정해진 뒤에야 높이가 맞으므로 한 프레임 뒤 다시 잰다.
+func _refit_next_frame() -> void:
+	_fit_token += 1
+	var token := _fit_token
+	if not is_inside_tree():
+		return
+	await get_tree().process_frame
+	if token != _fit_token or not sheet.visible or not is_inside_tree():
+		return
+	_apply_sheet_height(true, minf(SHEET_OPEN_HEIGHT, sheet_fit_height()))
 
 
 ## 시트 머리 + 내용 + 여백을 합친 높이
@@ -197,21 +217,30 @@ func _build_sheet_head() -> void:
 		sheet_head.add_child(_label("상점", 24, S.GOLD, false, true))
 		sheet_head.add_child(_badge("coin", str(state.gold), S.GOLD))
 		var reroll := _button("새로고침 %d원" % GameState.REROLL_COST, _on_reroll)
-		reroll.disabled = state.gold < GameState.REROLL_COST
+		reroll.disabled = battling or state.gold < GameState.REROLL_COST
 		sheet_head.add_child(reroll)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sheet_head.add_child(spacer)
-	# 시트 오른쪽 위: 체력 + 전투 시작
+	# 상세 패널(유닛 정보·정찰)에는 체력·전투 버튼을 두지 않는다
+	if inspect_enemy >= 0 or inspect_unit >= 0:
+		return
+	# 상점 오른쪽 위: 체력 + 전투 시작(전투 중엔 배속)
 	sheet_head.add_child(_hp_widget())
-	var fight := _button("전투 시작", _on_fight)
-	fight.theme_type_variation = "GoButton"
+	# 전투 중에는 같은 자리가 배속 버튼
+	var fight: Button
+	if battling:
+		fight = _button("2배속 켜짐" if fast else "2배속", _on_toggle_fast)
+		fight.theme_type_variation = "PrimaryButton" if fast else "Button"
+	else:
+		fight = _button("전투 시작", _on_fight)
+		fight.theme_type_variation = "GoButton"
+		fight.disabled = not state.can_fight()
 	fight.custom_minimum_size = Vector2(176, 56)
 	fight.add_theme_font_size_override("font_size", 22)
-	var ic := GameIcon.make("sword", 24, Color.WHITE)
+	var ic := GameIcon.make("bolt" if battling else "sword", 24, Color(0.3, 0.18, 0.02) if battling and fast else Color.WHITE)
 	ic.position = Vector2(10, 13)
 	fight.add_child(ic)
-	fight.disabled = not state.can_fight()
 	sheet_head.add_child(fight)
 
 
@@ -296,6 +325,10 @@ func _badge(icon: String, text: String, color: Color, font_size: int = 22) -> Co
 ## 전장 미리보기: 우리 유닛 + 이번 라운드 상대
 func _refresh_field() -> void:
 	battle_view.show_preview(roster(state.units, "a"), roster(state.enemy_team(), "b"))
+	_refresh_highlight()
+
+
+func _refresh_highlight() -> void:
 	if inspect_enemy >= 0:
 		battle_view.set_highlight("b", inspect_enemy)
 	elif inspect_unit >= 0:
@@ -333,7 +366,7 @@ func _add_unit_editor() -> void:
 	row.add_theme_constant_override("separation", 14)
 	panel.add_child(row)
 	var view := BackpackView.new()
-	view.setup(pack, inspect_unit, cell_size_for(pack))
+	view.setup(pack, inspect_unit, cell_size_for(pack), not battling)
 	view.selected = selected
 	view.cell_pressed.connect(_on_cell_pressed)
 	row.add_child(view)
@@ -349,9 +382,10 @@ func _add_unit_editor() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	info.add_child(spacer)
-	var sell := _button("판매 +%d원" % pack.sell_price(), _on_sell_unit)
-	sell.theme_type_variation = "DangerButton"
-	info.add_child(sell)
+	if not battling:
+		var sell := _button("판매 +%d원" % pack.sell_price(), _on_sell_unit)
+		sell.theme_type_variation = "DangerButton"
+		info.add_child(sell)
 	row.add_child(info)
 	content.add_child(panel)
 
@@ -417,7 +451,7 @@ func _add_shop() -> void:
 
 ## 상점 카드: 등급 띠, 모양, 이름, 핵심 능력치, 가격표
 func _offer_card(index: int, offer: Dictionary) -> Control:
-	var w := Vector2(100, 228)
+	var w := Vector2(100, 262)
 	if offer.is_empty():
 		var sold := _card(Color(0.3, 0.3, 0.3), false, w, Callable())
 		sold.disabled = true
@@ -428,7 +462,7 @@ func _offer_card(index: int, offer: Dictionary) -> Control:
 	var cost := GameState.offer_cost(offer)
 	var col := S.rarity_color(cost)
 	var card := _card(col, false, w, _on_buy.bind(index))
-	card.disabled = state.buy_block_reason(index) != ""
+	card.disabled = battling or state.buy_block_reason(index) != ""
 	var v := _card_box(card)
 	var tag := _label(("유닛 · " if offer["kind"] == "unit" else "") + S.rarity_name(cost), 15, col.lightened(0.3), false, true, true)
 	v.add_child(tag)
@@ -447,19 +481,19 @@ func _offer_card(index: int, offer: Dictionary) -> Control:
 		card.tooltip_text = item.describe()
 		if item.has_skill():
 			v.add_child(_skill_tag(item, 16))
-	# 핵심 능력치 두 개
-	var mini := HBoxContainer.new()
-	mini.alignment = BoxContainer.ALIGNMENT_CENTER
-	mini.add_theme_constant_override("separation", 3)
+	# 핵심 능력치 (세로로 한 줄에 하나)
 	var shown := 0
 	for e: Array in STAT_ICONS:
 		if shown >= 2 or not stats.has(e[1]) or float(stats[e[1]]) == 0.0:
 			continue
-		mini.add_child(GameIcon.make(e[0], 18))
-		mini.add_child(_label((e[2] % float(stats[e[1]])).replace(".00", ""), 16, S.TEXT, false, true))
+		var line := HBoxContainer.new()
+		line.alignment = BoxContainer.ALIGNMENT_CENTER
+		line.add_theme_constant_override("separation", 5)
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		line.add_child(GameIcon.make(e[0], 24))
+		line.add_child(_label((e[2] % float(stats[e[1]])).replace(".00", ""), 22, S.TEXT, false, true))
+		v.add_child(line)
 		shown += 1
-	mini.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	v.add_child(mini)
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -567,6 +601,8 @@ func _on_field_tapped(side: String, index: int) -> void:
 
 ## 전장에서 우리 유닛을 끌어 놓았다
 func _on_unit_moved(index: int, pos: Vector2) -> void:
+	if battling:
+		return
 	state.move_unit(index, pos)
 	message = ""
 	refresh()
@@ -590,12 +626,16 @@ func _on_back_to_shop() -> void:
 
 
 func _on_inventory_pressed(item: Item) -> void:
+	if battling:
+		return
 	selected = null if selected == item else item
 	message = ""
 	refresh()
 
 
 func _on_cell_pressed(unit_index: int, cell: Vector2i) -> void:
+	if battling:
+		return
 	var pack := state.units[unit_index]
 	var at := pack.item_at(cell)
 	message = ""
@@ -625,12 +665,16 @@ func _on_unequip() -> void:
 
 
 func _on_sell_item() -> void:
+	if battling:
+		return
 	if selected != null and state.sell_item(selected):
 		selected = null
 	refresh()
 
 
 func _on_sell_unit() -> void:
+	if battling:
+		return
 	if inspect_unit >= 0 and inspect_unit < state.units.size():
 		var pack := state.units[inspect_unit]
 		if state.sell_unit(pack):
@@ -646,6 +690,8 @@ func _on_deselect() -> void:
 
 
 func _on_buy(index: int) -> void:
+	if battling:
+		return
 	var offer := state.shop[index]
 	var reason := state.buy_block_reason(index)
 	if reason != "":
@@ -659,6 +705,8 @@ func _on_buy(index: int) -> void:
 
 
 func _on_reroll() -> void:
+	if battling:
+		return
 	state.reroll()
 	refresh()
 
@@ -760,6 +808,10 @@ func _setup_demo(kind: String) -> void:
 			if a.begins_with("t="):
 				at = a.substr(2).to_float()
 		_start_battle(at)
+		# inspect=a1 / inspect=b0 : 전투 중 상세 보기 (스크린샷용)
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("inspect=") and a.length() >= 10:
+				_on_field_tapped(a.substr(8, 1), a.substr(9).to_int())
 		return
 	elif kind == "result":
 		last_result = state.fight()

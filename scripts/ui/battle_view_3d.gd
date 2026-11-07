@@ -188,9 +188,8 @@ func is_dragging() -> bool:
 
 
 ## 누르기 → (움직이면) 끌기 → 떼기. 조금만 움직이고 떼면 탭.
+## 탭은 미리보기·전투 중 모두 받고, 끌기는 미리보기에서만.
 func _gui_input(event: InputEvent) -> void:
-	if mode != Mode.PREVIEW:
-		return
 	var mb := event as InputEventMouseButton
 	if mb != null and mb.button_index == MOUSE_BUTTON_LEFT:
 		if mb.pressed:
@@ -215,7 +214,7 @@ func _gui_input(event: InputEvent) -> void:
 			accept_event()
 		return
 	var mm := event as InputEventMouseMotion
-	if mm != null and not _press.is_empty() and _press["side"] == draggable_side:
+	if mm != null and mode == Mode.PREVIEW and not _press.is_empty() and _press["side"] == draggable_side:
 		if not _dragging and mm.position.distance_to(_press_at) > DRAG_THRESHOLD:
 			_dragging = true
 			_own_zone.visible = true

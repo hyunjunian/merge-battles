@@ -80,7 +80,27 @@ func test_fight_flow_and_next_round() -> void:
 	check_eq(main.battle_view.speed_mult, 2.0, "2배속")
 	check(main.battling, "배속을 바꿔도 전투는 계속")
 	check(main.battle_view.mode == BattleView3D.Mode.PLAYING, "전장에서 전투 재생")
-	check(not main.sheet.visible, "전투 중엔 시트 숨김 (전장 전체 화면)")
+	check(main.sheet.visible, "전투 중에도 상점 시트가 보임")
+	var speed_btn := false
+	for c in main.sheet_head.get_children():
+		if c is Button and (c as Button).text.contains("배속"):
+			speed_btn = true
+	check(speed_btn, "전투 시작 자리에 배속 버튼")
+	var gold_before: int = state.gold
+	main._on_buy(GameState.UNIT_OFFERS)
+	check_eq(state.gold, gold_before, "전투 중엔 구매 불가")
+	main._on_field_tapped("b", 0)
+	check_eq(main.inspect_enemy, 0, "전투 중에도 적 상세")
+	var head_buttons := 0
+	for c in main.sheet_head.get_children():
+		if c is Button:
+			head_buttons += 1
+	check_eq(head_buttons, 0, "상세 패널 머리엔 전투·배속 버튼 없음")
+	main._on_field_tapped("a", 0)
+	check_eq(main.inspect_unit, 0, "전투 중에도 우리 유닛 상세")
+	check(main.battle_view.mode == BattleView3D.Mode.PLAYING, "상세를 열어도 전투는 계속")
+	main.battle_view.background_tapped.emit()
+	check_eq(main.inspect_unit, -1, "빈 곳을 누르면 상점")
 	main.battle_view.skip()
 	check(not main.battling, "전투 끝")
 	check_eq(state.round_no, 2, "승패와 상관없이 다음 라운드")
