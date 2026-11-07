@@ -85,3 +85,42 @@ func test_pool_has_no_empty_lineups() -> void:
 	for r: int in real.rounds.keys():
 		for e: Array in real.rounds[r]:
 			check(not e.is_empty(), "출전 풀 %d 라운드에 빈 출전" % r)
+
+
+func test_pick_index_changes_on_reroll() -> void:
+	var pool := OpponentPool.new()
+	for i in 5:
+		pool.add(1, [{"u": "recruit", "x": float(i), "z": 3.0, "i": []}])
+	var prev := pool.pick_index(1, 42, 0)
+	check_eq(prev, pool.pick_index(1, 42, 0), "같은 시드면 같은 상대")
+	for k in range(1, 20):
+		var idx := pool.pick_index(1, 42, k)
+		check(idx >= 0 and idx < 5 and idx != prev, "새로고침하면 다른 출전")
+		prev = idx
+	var one := OpponentPool.new()
+	one.add(1, [{"u": "recruit", "x": 0.0, "z": 3.0, "i": []}])
+	check_eq(one.pick_index(1, 42, 3), 0, "하나뿐이면 그대로")
+
+
+func test_reroll_enemy_costs_gold_and_resets_next_round() -> void:
+	var gs := GameState.new(11)
+	var pool := OpponentPool.new()
+	for i in 4:
+		pool.add(1, [{"u": "recruit", "x": float(i), "z": 3.0, "i": []}])
+		pool.add(2, [{"u": "scout", "x": float(i), "z": 3.0, "i": []}])
+	gs.opponents = pool
+	var before := gs.enemy_team()[0].field_pos
+	var gold := gs.gold
+	check(gs.reroll_enemy(), "1원으로 상대 새로고침")
+	check_eq(gs.gold, gold - GameState.ENEMY_REROLL_COST)
+	check(gs.enemy_team()[0].field_pos != before, "다른 출전으로 바뀜")
+	check_eq(gs.enemy_reroll_count(), 1)
+	gs.apply_outcome(true, 0)
+	check_eq(gs.enemy_reroll_count(), 0, "다음 라운드는 새로 시작")
+	gs.gold = 0
+	check(not gs.reroll_enemy(), "돈이 없으면 못 바꿈")
+	var single := OpponentPool.new()
+	single.add(gs.round_no, [{"u": "recruit", "x": 0.0, "z": 3.0, "i": []}])
+	gs.opponents = single
+	gs.gold = 5
+	check(not gs.can_reroll_enemy(), "출전이 하나뿐이면 못 바꿈")

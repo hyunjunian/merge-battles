@@ -345,3 +345,17 @@ func test_fight_without_units_loses_at_once() -> void:
 	check(not main.battling, "유닛이 없으면 전투 없이 바로 끝")
 	check(not main.summary.is_empty() and not main.summary["won"], "바로 패배")
 	free_later(main)
+
+
+func test_reroll_enemy_from_scouting() -> void:
+	var main := _spawn()
+	var state: GameState = main.state
+	main._on_field_tapped("b", 0)
+	var gold := state.gold
+	var count := state.enemy_reroll_count()
+	check(state.can_reroll_enemy(), "시작하자마자 상대 바꾸기 가능")
+	main._on_reroll_enemy()
+	check_eq(state.gold, gold - GameState.ENEMY_REROLL_COST, "정찰 패널에서 1원으로 상대 바꾸기")
+	check_eq(state.enemy_reroll_count(), count + 1)
+	check_eq(main.inspect_enemy, 0, "새 상대 첫 유닛 정찰")
+	free_later(main)

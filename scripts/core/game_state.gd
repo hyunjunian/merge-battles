@@ -20,6 +20,7 @@ const HP_LOSS_PER_UNIT := 8
 const SHOP_SIZE := 5
 const UNIT_CHANCE := 0.4
 const REROLL_COST := 1
+const ENEMY_REROLL_COST := 1
 
 var hp: int = START_HP
 var gold: int = START_GOLD
@@ -148,6 +149,28 @@ func buy(index: int) -> bool:
 	else:
 		inventory.append(Item.new(offer["id"]))
 	shop[index] = {}
+	return true
+
+
+## 이번 라운드 상대 새로고침 횟수 (라운드가 바뀌면 0)
+func enemy_reroll_count() -> int:
+	return _enemy_rerolls if _enemy_rerolls_round == round_no else 0
+
+
+## 상대 새로고침: 전투 전 1원으로 이번 라운드 상대를 같은 라운드의 다른 출전으로 바꾼다
+func can_reroll_enemy() -> bool:
+	if game_over or victory or gold < ENEMY_REROLL_COST:
+		return false
+	# 풀에 이 라운드 출전이 하나뿐이면 바꿀 상대가 없다
+	return opponents == null or opponents.entry_count(round_no) >= 2
+
+
+func reroll_enemy() -> bool:
+	if not can_reroll_enemy():
+		return false
+	gold -= ENEMY_REROLL_COST
+	_enemy_rerolls = enemy_reroll_count() + 1
+	_enemy_rerolls_round = round_no
 	return true
 
 
@@ -289,18 +312,21 @@ func rotate(item: Item) -> bool:
 var opponents: OpponentPool = null
 ## 풀에 다음 라운드 상대가 없어 이긴 상태
 var victory: bool = false
+var _enemy_rerolls: int = 0
+var _enemy_rerolls_round: int = 0
 var _enemy_cache_key: int = 0
 var _enemy_cache: Array[Backpack] = []
 
 
 func enemy_team() -> Array[Backpack]:
-	var key := hash([round_no, run_seed, opponents != null])
+	var rerolls := enemy_reroll_count()
+	var key := hash([round_no, run_seed, opponents != null, rerolls])
 	if _enemy_cache_key != key or _enemy_cache.is_empty():
 		_enemy_cache_key = key
 		if opponents != null and opponents.has_round(round_no):
-			_enemy_cache = opponents.team_for(round_no, run_seed)
+			_enemy_cache = opponents.team_for(round_no, run_seed, rerolls)
 		else:
-			_enemy_cache = EnemyGen.generate(round_no, run_seed)
+			_enemy_cache = EnemyGen.generate(round_no, run_seed if rerolls == 0 else hash([run_seed, rerolls]))
 	# 같은 라운드 안에서는 같은 팀 (화면이 여러 번 물어봐도)
 	var out: Array[Backpack] = []
 	for p in _enemy_cache:

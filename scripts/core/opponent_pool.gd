@@ -38,13 +38,26 @@ func max_round() -> int:
 
 
 ## k 라운드 세팅 중 하나 (같은 seed·라운드면 같은 팀)
-func team_for(round_no: int, seed_value: int) -> Array[Backpack]:
-	if not has_round(round_no):
-		return []
-	var list: Array = rounds[round_no]
+func team_for(round_no: int, seed_value: int, rerolls: int = 0) -> Array[Backpack]:
+	var idx := pick_index(round_no, seed_value, rerolls)
+	return [] if idx < 0 else build_team(rounds[round_no][idx])
+
+
+## k 라운드 상대로 고를 출전 번호 (run 시드로 고정, 없으면 -1).
+## 새로고침할 때마다(rerolls) 같은 라운드의 다른 출전으로 바뀐다 (바로 전과는 늘 다름).
+func pick_index(round_no: int, seed_value: int, rerolls: int = 0) -> int:
+	var n := entry_count(round_no)
+	if n == 0:
+		return -1
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash([seed_value, round_no, "pool"])
-	return build_team(list[rng.randi_range(0, list.size() - 1)])
+	var idx := rng.randi_range(0, n - 1)
+	if n < 2:
+		return idx
+	for k in rerolls:
+		var j := rng.randi_range(0, n - 2)
+		idx = j + 1 if j >= idx else j
+	return idx
 
 
 ## 유닛 목록 → 팀 세팅

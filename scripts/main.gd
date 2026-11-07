@@ -614,7 +614,13 @@ func _add_enemy_detail() -> void:
 		flow.add_child(_list_item_card(item, false, false, _on_info_item.bind(item), cell))
 	lv.add_child(flow)
 	var left_w := maxf(200.0, pack.width * cell + 24.0)
-	content.add_child(_detail_grid(left_w, _name_box(pack, S.RED.lightened(0.3), false), _info_box(pack, s, "b", inspect_enemy), _bag_box(view), lv, Color(S.RED, 0.6)))
+	var name_box := _name_box(pack, S.RED.lightened(0.3), false)
+	# 전투 전: 1원으로 이번 라운드 상대를 다른 출전으로 바꾼다
+	var change := _button("상대 바꾸기 %d원" % GameState.ENEMY_REROLL_COST, _on_reroll_enemy)
+	change.disabled = battling or not state.can_reroll_enemy()
+	change.custom_minimum_size = Vector2(0, 42)
+	name_box.add_child(change)
+	content.add_child(_detail_grid(left_w, name_box, _info_box(pack, s, "b", inspect_enemy), _bag_box(view), lv, Color(S.RED, 0.6)))
 	_add_item_info(pack)
 	var syn: PackedStringArray = []
 	for tag in Synergy.TAG_ORDER:
@@ -836,6 +842,15 @@ func _on_reroll() -> void:
 	if battling:
 		return
 	state.reroll()
+	refresh()
+
+
+func _on_reroll_enemy() -> void:
+	if battling or not state.reroll_enemy():
+		return
+	# 새 상대 팀의 첫 유닛을 정찰한다
+	inspect_enemy = 0
+	info_item = null
 	refresh()
 
 
