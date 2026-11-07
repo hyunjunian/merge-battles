@@ -132,8 +132,20 @@ func test_tap_enemy_shows_detail_and_tap_own_unit_edits() -> void:
 	main._on_field_tapped("a", 0)
 	check_eq(main.inspect_unit, -1, "같은 유닛을 다시 누르면 상점")
 	main._on_field_tapped("b", 0)
-	main._on_back_to_shop()
-	check(main.inspect_unit == -1 and main.inspect_enemy == -1, "◀ 상점")
+	main.battle_view.background_tapped.emit()
+	check(main.inspect_unit == -1 and main.inspect_enemy == -1, "패널 밖(빈 바닥)을 누르면 상점")
+	main._on_field_tapped("a", 0)
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	main._on_hud_input(up)
+	check_eq(main.inspect_unit, -1, "위 HUD 를 눌러도 상점")
+	var has_back := false
+	main._on_field_tapped("a", 0)
+	for c in main.sheet_head.get_children():
+		if c is Button and (c as Button).text.contains("상점"):
+			has_back = true
+	check(not has_back, "상점 돌아가기 버튼 없음")
 	free_later(main)
 
 

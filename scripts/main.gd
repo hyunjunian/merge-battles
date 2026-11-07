@@ -101,6 +101,8 @@ func _ready() -> void:
 	theme = S.make_theme()
 	battle_view.unit_tapped.connect(_on_field_tapped)
 	battle_view.unit_moved.connect(_on_unit_moved)
+	battle_view.background_tapped.connect(_on_back_to_shop)
+	$Hud.gui_input.connect(_on_hud_input)
 	battle_view.finished.connect(_on_battle_finished)
 	var demo := _demo_arg()
 	if demo != "":
@@ -185,7 +187,7 @@ func sheet_fit_height() -> float:
 func _build_sheet_head() -> void:
 	sheet_head.add_theme_constant_override("separation", 8)
 	if inspect_enemy >= 0 or inspect_unit >= 0:
-		sheet_head.add_child(_button("◀ 상점", _on_back_to_shop))
+		# 상점으로는 패널 밖(전장 빈 곳·위 HUD)을 눌러 돌아간다
 		if inspect_enemy >= 0:
 			sheet_head.add_child(_label("적 %d 정찰" % (inspect_enemy + 1), 22, S.RED, false, true))
 		else:
@@ -572,7 +574,16 @@ func _on_unit_moved(index: int, pos: Vector2) -> void:
 	refresh()
 
 
+func _on_hud_input(event: InputEvent) -> void:
+	var mb := event as InputEventMouseButton
+	if mb != null and not mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and (inspect_unit >= 0 or inspect_enemy >= 0):
+		_on_back_to_shop()
+
+
+## 상세 패널 밖을 누르면 상점으로
 func _on_back_to_shop() -> void:
+	if inspect_unit < 0 and inspect_enemy < 0 and selected == null:
+		return
 	inspect_unit = -1
 	inspect_enemy = -1
 	selected = null

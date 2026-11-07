@@ -10,6 +10,8 @@ signal finished(winner: String)
 signal unit_tapped(side: String, index: int)
 ## 미리보기에서 우리 유닛(draggable_side)을 끌어 놓았을 때. pos 는 바닥 좌표 (x, z).
 signal unit_moved(index: int, pos: Vector2)
+## 미리보기에서 유닛이 없는 곳(빈 바닥)을 탭했을 때
+signal background_tapped()
 
 const SPEED := 1.25
 const LUNGE_TIME := 0.25
@@ -46,6 +48,7 @@ var highlight: Dictionary = {}
 ## 끌어서 옮길 수 있는 편 ("" 이면 끌기 없음)
 var draggable_side: String = "a"
 var _press: Dictionary = {}  # 누른 유닛 {side, index}
+var _press_bg: bool = false  # 빈 곳을 눌렀는가
 var _press_at: Vector2 = Vector2.ZERO
 var _dragging: bool = false
 var _own_zone: MeshInstance3D
@@ -194,8 +197,13 @@ func _gui_input(event: InputEvent) -> void:
 			_press = pick(mb.position)
 			_press_at = mb.position
 			_dragging = false
-			if not _press.is_empty():
-				accept_event()
+			_press_bg = _press.is_empty()
+			accept_event()
+		elif _press_bg:
+			_press_bg = false
+			if mb.position.distance_to(_press_at) <= DRAG_THRESHOLD:
+				background_tapped.emit()
+			accept_event()
 		elif not _press.is_empty():
 			if _dragging:
 				var p := BattleSim.clamp_own(ground_point(mb.position))
