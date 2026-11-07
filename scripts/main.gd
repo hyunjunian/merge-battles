@@ -224,24 +224,18 @@ func sheet_fit_height() -> float:
 
 func _build_sheet_head() -> void:
 	sheet_head.add_theme_constant_override("separation", 8)
-	# 우리 유닛 정보에는 머리가 없다 (이름 칸이 제목 역할). 상점으로는 패널 밖을 눌러 돌아간다
-	sheet_head.visible = inspect_unit < 0 or inspect_enemy >= 0
+	# 상세 패널(유닛 정보·정찰)에는 머리가 없다 (이름 칸이 제목 역할). 상점으로는 패널 밖을 눌러 돌아간다
+	sheet_head.visible = inspect_unit < 0 and inspect_enemy < 0
 	if not sheet_head.visible:
 		return
-	if inspect_enemy >= 0:
-		sheet_head.add_child(_label("적 %d 정찰" % (inspect_enemy + 1), 22, S.RED, false, true))
-	else:
-		sheet_head.add_child(_label("상점", 24, S.GOLD, false, true))
-		sheet_head.add_child(_badge("coin", str(state.gold), S.GOLD))
-		var reroll := _button("새로고침 %d원" % GameState.REROLL_COST, _on_reroll)
-		reroll.disabled = battling or state.gold < GameState.REROLL_COST
-		sheet_head.add_child(reroll)
+	sheet_head.add_child(_label("상점", 24, S.GOLD, false, true))
+	sheet_head.add_child(_badge("coin", str(state.gold), S.GOLD))
+	var reroll := _button("새로고침 %d원" % GameState.REROLL_COST, _on_reroll)
+	reroll.disabled = battling or state.gold < GameState.REROLL_COST
+	sheet_head.add_child(reroll)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sheet_head.add_child(spacer)
-	# 상세 패널(유닛 정보·정찰)에는 체력·전투 버튼을 두지 않는다
-	if inspect_enemy >= 0 or inspect_unit >= 0:
-		return
 	# 상점 오른쪽 위: 체력 + 전투 시작(전투 중엔 배속)
 	sheet_head.add_child(_hp_widget())
 	# 전투 중에는 같은 자리가 배속 버튼
