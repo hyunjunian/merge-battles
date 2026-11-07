@@ -19,7 +19,6 @@ const MAX_STREAK_BONUS := 5
 const SHOP_SIZE := 5
 const UNIT_CHANCE := 0.4
 const REROLL_COST := 1
-const ENEMY_REROLL_COST := 1
 const INTEREST_PER := 10
 const MAX_INTEREST := 5
 
@@ -164,9 +163,18 @@ func enemy_reroll_count() -> int:
 	return _enemy_rerolls if _enemy_rerolls_round == round_no else 0
 
 
-## 상대 새로고침: 전투 전 1원으로 이번 라운드 상대를 같은 라운드의 다른 출전으로 바꾼다
+## 상대 새로고침 가격: 라운드 수 / 10 올림 (1~10라운드 1원, 11~20라운드 2원, ...)
+static func enemy_reroll_cost_for(round_value: int) -> int:
+	return maxi(1, ceili(round_value / 10.0))
+
+
+func enemy_reroll_cost() -> int:
+	return enemy_reroll_cost_for(round_no)
+
+
+## 상대 새로고침: 전투 전 enemy_reroll_cost() 원으로 이번 라운드 상대를 같은 라운드의 다른 출전으로 바꾼다
 func can_reroll_enemy() -> bool:
-	if game_over or victory or gold < ENEMY_REROLL_COST:
+	if game_over or victory or gold < enemy_reroll_cost():
 		return false
 	# 풀에 이 라운드 출전이 하나뿐이면 바꿀 상대가 없다
 	return opponents == null or opponents.entry_count(round_no) >= 2
@@ -175,7 +183,7 @@ func can_reroll_enemy() -> bool:
 func reroll_enemy() -> bool:
 	if not can_reroll_enemy():
 		return false
-	gold -= ENEMY_REROLL_COST
+	gold -= enemy_reroll_cost()
 	_enemy_rerolls = enemy_reroll_count() + 1
 	_enemy_rerolls_round = round_no
 	return true

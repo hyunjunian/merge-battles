@@ -112,7 +112,7 @@ func test_reroll_enemy_costs_gold_and_resets_next_round() -> void:
 	var before := gs.enemy_team()[0].field_pos
 	var gold := gs.gold
 	check(gs.reroll_enemy(), "1원으로 상대 새로고침")
-	check_eq(gs.gold, gold - GameState.ENEMY_REROLL_COST)
+	check_eq(gs.gold, gold - gs.enemy_reroll_cost())
 	check(gs.enemy_team()[0].field_pos != before, "다른 출전으로 바뀜")
 	check_eq(gs.enemy_reroll_count(), 1)
 	gs.apply_outcome(true)
@@ -124,3 +124,22 @@ func test_reroll_enemy_costs_gold_and_resets_next_round() -> void:
 	gs.opponents = single
 	gs.gold = 5
 	check(not gs.can_reroll_enemy(), "출전이 하나뿐이면 못 바꿈")
+
+
+func test_enemy_reroll_cost_by_round() -> void:
+	check_eq(GameState.enemy_reroll_cost_for(1), 1)
+	check_eq(GameState.enemy_reroll_cost_for(10), 1)
+	check_eq(GameState.enemy_reroll_cost_for(11), 2)
+	check_eq(GameState.enemy_reroll_cost_for(20), 2)
+	check_eq(GameState.enemy_reroll_cost_for(34), 4)
+	var gs := GameState.new(2)
+	var pool := OpponentPool.new()
+	for i in 3:
+		pool.add(15, [{"u": "recruit", "x": float(i), "z": 3.0, "i": []}])
+	gs.opponents = pool
+	gs.round_no = 15
+	gs.gold = 2
+	check(gs.reroll_enemy(), "15라운드는 2원")
+	check_eq(gs.gold, 0)
+	gs.gold = 1
+	check(not gs.can_reroll_enemy(), "1원으로는 부족")

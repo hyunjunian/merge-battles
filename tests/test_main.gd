@@ -355,7 +355,7 @@ func test_reroll_enemy_from_scouting() -> void:
 	var count := state.enemy_reroll_count()
 	check(state.can_reroll_enemy(), "시작하자마자 상대 바꾸기 가능")
 	main._on_reroll_enemy()
-	check_eq(state.gold, gold - GameState.ENEMY_REROLL_COST, "정찰 패널에서 1원으로 상대 바꾸기")
+	check_eq(state.gold, gold - state.enemy_reroll_cost(), "정찰 패널에서 1원으로 상대 바꾸기")
 	check_eq(state.enemy_reroll_count(), count + 1)
 	check_eq(main.inspect_enemy, 0, "새 상대 첫 유닛 정찰")
 	free_later(main)

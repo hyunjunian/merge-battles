@@ -645,7 +645,7 @@ func _add_enemy_detail() -> void:
 	var left_w := maxf(200.0, pack.width * cell + 24.0)
 	var name_box := _name_box(pack, S.RED.lightened(0.3), false)
 	# 전투 전: 1원으로 이번 라운드 상대를 다른 출전으로 바꾼다
-	var change := _button("상대 바꾸기 %d원" % GameState.ENEMY_REROLL_COST, _on_reroll_enemy)
+	var change := _button("상대 바꾸기 %d원" % state.enemy_reroll_cost(), _on_reroll_enemy)
 	change.disabled = battling or not state.can_reroll_enemy()
 	change.custom_minimum_size = Vector2(0, 42)
 	name_box.add_child(change)
