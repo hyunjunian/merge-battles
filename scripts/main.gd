@@ -396,22 +396,20 @@ func _add_shop() -> void:
 	reroll.disabled = state.gold < GameState.REROLL_COST
 	head.add_child(reroll)
 	content.add_child(head)
-	for kind: String in ["unit", "item"]:
-		content.add_child(_label("유닛 (사면 바로 전장 투입 · 최대 %d)" % BattleSim.SLOT_COUNT if kind == "unit" else "아이템", 15, S.MUTED))
-		var flow := HFlowContainer.new()
-		flow.add_theme_constant_override("h_separation", 8)
-		flow.add_theme_constant_override("v_separation", 8)
-		for i in state.shop.size():
-			var offer := state.shop[i]
-			if (offer.is_empty() and ((kind == "unit") != (i < GameState.UNIT_OFFERS))) or (not offer.is_empty() and offer["kind"] != kind):
-				continue
-			flow.add_child(_offer_card(i, offer))
-		content.add_child(flow)
+	# 진열 5개(유닛 2 + 아이템 3)를 한 줄에 같은 폭으로
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	for i in state.shop.size():
+		var card := _offer_card(i, state.shop[i])
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(card)
+	content.add_child(row)
+	content.add_child(_label("유닛은 사면 바로 전장에 투입 (최대 %d) · 아이템은 보유함으로" % BattleSim.SLOT_COUNT, 13, S.MUTED))
 
 
 ## 상점 카드: 등급 띠, 모양, 이름, 핵심 능력치, 가격표
 func _offer_card(index: int, offer: Dictionary) -> Control:
-	var w := Vector2(132, 170)
+	var w := Vector2(100, 184)
 	if offer.is_empty():
 		var sold := _card(Color(0.3, 0.3, 0.3), false, w, Callable())
 		sold.disabled = true
@@ -424,33 +422,33 @@ func _offer_card(index: int, offer: Dictionary) -> Control:
 	var card := _card(col, false, w, _on_buy.bind(index))
 	card.disabled = state.buy_block_reason(index) != ""
 	var v := _card_box(card)
-	var tag := _label(S.rarity_name(cost), 12, col.lightened(0.3), false, true, true)
+	var tag := _label(("유닛 · " if offer["kind"] == "unit" else "") + S.rarity_name(cost), 12, col.lightened(0.3), false, true, true)
 	v.add_child(tag)
 	var stats: Dictionary
 	if offer["kind"] == "unit":
 		var d := UnitDB.get_def(offer["id"])
 		v.add_child(_center(ShapeIcon.for_unit(d["size"], d["color"], minf(13.0, 30.0 / float(d["size"].y)))))
-		v.add_child(_label(d["name"], 17, S.TEXT, false, true, true))
+		v.add_child(_label(d["name"], 15, S.TEXT, false, true, true))
 		stats = d["stats"]
 		card.tooltip_text = Pricing.describe_stats(stats, float(stats.get("range", 0.0)))
 	else:
 		var item := Item.new(offer["id"])
 		v.add_child(_center(ShapeIcon.for_item(item, minf(15.0, 30.0 / item.size().y))))
-		v.add_child(_label(item.display_name(), 17, S.TEXT, false, true, true))
+		v.add_child(_label(item.display_name(), 15, S.TEXT, false, true, true))
 		stats = item.stats()
 		card.tooltip_text = item.describe()
 		if item.has_skill():
-			v.add_child(_skill_tag(item))
+			v.add_child(_skill_tag(item, 12))
 	# 핵심 능력치 두 개
 	var mini := HBoxContainer.new()
 	mini.alignment = BoxContainer.ALIGNMENT_CENTER
-	mini.add_theme_constant_override("separation", 6)
+	mini.add_theme_constant_override("separation", 3)
 	var shown := 0
 	for e: Array in STAT_ICONS:
 		if shown >= 2 or not stats.has(e[1]) or float(stats[e[1]]) == 0.0:
 			continue
-		mini.add_child(GameIcon.make(e[0], 16))
-		mini.add_child(_label((e[2] % float(stats[e[1]])).replace(".00", ""), 13, S.TEXT))
+		mini.add_child(GameIcon.make(e[0], 14))
+		mini.add_child(_label((e[2] % float(stats[e[1]])).replace(".00", ""), 12, S.TEXT))
 		shown += 1
 	mini.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(mini)

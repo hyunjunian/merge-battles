@@ -138,11 +138,11 @@ func test_tap_enemy_shows_detail_and_tap_own_unit_edits() -> void:
 func test_default_sheet_is_shop() -> void:
 	var main := _spawn()
 	check(main.inspect_unit == -1 and main.inspect_enemy == -1, "처음엔 상점")
-	var has_offer := false
+	var row_cards := 0
 	for c in main.content.get_children():
-		if c is HFlowContainer and c.get_child_count() > 0 and c.get_child(0) is Button:
-			has_offer = true
-	check(has_offer, "상점 카드가 보임")
+		if c is HBoxContainer and c.get_child_count() > 0 and c.get_child(0) is Button:
+			row_cards = c.get_child_count()
+	check_eq(row_cards, GameState.UNIT_OFFERS + GameState.ITEM_OFFERS, "상점 카드 5개가 한 줄")
 	free_later(main)
 
 
