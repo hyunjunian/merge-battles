@@ -49,11 +49,9 @@ static func build(players: int = DEFAULT_PLAYERS, seed_value: int = 1, log_progr
 
 static func _duel(a: Bot, b: Bot) -> void:
 	var r := BattleSim.simulate(BattleSim.team_stats(a.state.units, "a"), BattleSim.team_stats(b.state.units, "b"))
-	# 승자가 없으면(둘 다 유닛 없음) 둘 다 진다
 	var a_won: bool = r["winner"] == "a"
-	var b_won: bool = r["winner"] == "b"
 	a.state.apply_outcome(a_won, 0 if a_won else GameState.surviving(r, 1))
-	b.state.apply_outcome(b_won, 0 if b_won else GameState.surviving(r, 0))
+	b.state.apply_outcome(not a_won, GameState.surviving(r, 0) if a_won else 0)
 
 
 ## 유령전: real 만 결과를 받는다

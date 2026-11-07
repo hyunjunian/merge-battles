@@ -13,7 +13,10 @@ var rounds: Dictionary = {}
 var meta: Dictionary = {}
 
 
+## 빈 출전(유닛 없음)은 넣지 않는다 → 상대로 빈 팀이 나오지 않는다
 func add(round_no: int, entry: Array) -> void:
+	if entry.is_empty():
+		return
 	if not rounds.has(round_no):
 		rounds[round_no] = []
 	rounds[round_no].append(entry)
@@ -87,7 +90,8 @@ static func from_dict(d: Dictionary) -> OpponentPool:
 	pool.meta = d.get("meta", {})
 	var r: Dictionary = d.get("rounds", {})
 	for k: String in r.keys():
-		pool.rounds[k.to_int()] = r[k]
+		for entry: Array in r[k]:
+			pool.add(k.to_int(), entry)
 	return pool
 
 

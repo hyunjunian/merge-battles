@@ -73,3 +73,15 @@ func test_bundled_pool_exists_and_is_complete() -> void:
 	check_eq(pool.entry_count(1), PoolBuilder.DEFAULT_PLAYERS, "1라운드엔 모든 봇")
 	for r in range(1, pool.max_round() + 1):
 		check(pool.has_round(r), "라운드 %d 데이터" % r)
+
+
+func test_pool_has_no_empty_lineups() -> void:
+	var pool := OpponentPool.new()
+	pool.add(1, [])
+	check(not pool.has_round(1), "빈 출전은 저장하지 않음")
+	var loaded := OpponentPool.from_dict({"rounds": {"2": [[], [{"u": "recruit", "x": 0.0, "z": 3.0, "i": []}]]}})
+	check_eq(loaded.entry_count(2), 1, "불러올 때도 빈 출전은 버림")
+	var real := OpponentPool.load_file()
+	for r: int in real.rounds.keys():
+		for e: Array in real.rounds[r]:
+			check(not e.is_empty(), "출전 풀 %d 라운드에 빈 출전" % r)

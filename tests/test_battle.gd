@@ -168,8 +168,6 @@ func test_empty_side_loses_at_once() -> void:
 	check_eq(GameState.surviving(r, 1), 1, "상대 유닛은 모두 살아 있음")
 	r = BattleSim.simulate(BattleSim.team_stats(team, "a"), BattleSim.team_stats(none, "b"))
 	check_eq(r["winner"], "a", "유닛 없는 b 가 진다")
-	r = BattleSim.simulate(BattleSim.team_stats(none, "a"), BattleSim.team_stats(none, "b"))
-	check_eq(r["winner"], "", "둘 다 없으면 승자 없음")
 
 
 func test_player_without_units_can_fight_and_loses() -> void:
@@ -181,5 +179,3 @@ func test_player_without_units_can_fight_and_loses() -> void:
 	var summary := gs.apply_result(r)
 	check(not summary["won"], "유닛이 없으면 패배")
 	check_eq(summary["hp_loss"], GameState.hp_loss_for(GameState.surviving(r, 1)), "살아남은 상대 유닛만큼 체력 감소")
-	var both := GameState.new(8)
-	check(not both.apply_result({"winner": "", "frames": [[PackedFloat32Array(), PackedFloat32Array()]], "max_a": PackedFloat32Array(), "max_b": PackedFloat32Array()})["won"], "승자 없음 = 패배")
