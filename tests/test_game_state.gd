@@ -31,7 +31,7 @@ func test_start_state() -> void:
 	check_eq(Vector2i(u.width, u.height), Vector2i(1, 2), "1x2 유닛")
 	check_eq(u.slot, 0, "전장 첫 자리")
 	check(gs.inventory.is_empty(), "아이템 없음")
-	check_eq(gs.shop.size(), GameState.UNIT_OFFERS + GameState.ITEM_OFFERS)
+	check_eq(gs.shop.size(), GameState.SHOP_SIZE)
 
 
 func test_buying_unit_deploys_immediately() -> void:
@@ -60,8 +60,8 @@ func test_field_has_slot_limit() -> void:
 func test_buying_item_goes_to_inventory_and_equips() -> void:
 	var gs := GameState.new(1)
 	gs.gold = 10
-	gs.shop[GameState.UNIT_OFFERS] = {"kind": "item", "id": "sword"}
-	check(gs.buy(GameState.UNIT_OFFERS))
+	gs.shop[2] = {"kind": "item", "id": "sword"}
+	check(gs.buy(2))
 	var sword := gs.inventory[0]
 	check(gs.equip(sword, 0, Vector2i(0, 0)), "견습병 1x2 에 장검")
 	check_eq(gs.unit_of(sword), 0)
@@ -239,3 +239,20 @@ func test_unequip_all_returns_items() -> void:
 	check(gs.units[1].is_empty(), "가방 비움")
 	check_eq(gs.inventory.size(), 2, "보유함으로")
 	check_eq(gs.unequip_all(1), 0, "빈 가방은 0")
+
+
+func test_shop_mixes_units_and_items_freely() -> void:
+	var gs := GameState.new(11)
+	var unit_counts := {}
+	var first_kinds := {}
+	for i in 200:
+		gs.refill_shop()
+		check_eq(gs.shop.size(), GameState.SHOP_SIZE)
+		var n := 0
+		for o in gs.shop:
+			if o["kind"] == "unit":
+				n += 1
+		unit_counts[n] = true
+		first_kinds[gs.shop[0]["kind"]] = true
+	check(unit_counts.size() >= 4, "유닛 개수가 매번 다름: %s" % str(unit_counts.keys()))
+	check(first_kinds.has("unit") and first_kinds.has("item"), "첫 칸도 유닛·아이템이 섞임")

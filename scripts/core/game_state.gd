@@ -16,8 +16,9 @@ const START_UNIT := "recruit"
 const BASE_INCOME := 3
 const MAX_STREAK_BONUS := 5
 const HP_LOSS_PER_UNIT := 8
-const UNIT_OFFERS := 2
-const ITEM_OFFERS := 3
+## 상점 칸 수. 칸마다 UNIT_CHANCE 확률로 유닛, 아니면 아이템 (개수·순서 고정 없음)
+const SHOP_SIZE := 5
+const UNIT_CHANCE := 0.4
 const REROLL_COST := 1
 
 var hp: int = START_HP
@@ -111,10 +112,11 @@ func move_unit(index: int, p: Vector2) -> Vector2:
 
 func refill_shop() -> void:
 	shop.clear()
-	for i in UNIT_OFFERS:
-		shop.append({"kind": "unit", "id": Pricing.roll_unit(round_no, rng)})
-	for i in ITEM_OFFERS:
-		shop.append({"kind": "item", "id": Pricing.roll_item(round_no, rng)})
+	for i in SHOP_SIZE:
+		if rng.randf() < UNIT_CHANCE:
+			shop.append({"kind": "unit", "id": Pricing.roll_unit(round_no, rng)})
+		else:
+			shop.append({"kind": "item", "id": Pricing.roll_item(round_no, rng)})
 
 
 static func offer_cost(offer: Dictionary) -> int:

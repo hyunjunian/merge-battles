@@ -89,7 +89,7 @@ func test_fight_flow_and_next_round() -> void:
 			speed_btn = true
 	check(speed_btn, "전투 시작 자리에 배속 버튼")
 	var gold_before: int = state.gold
-	main._on_buy(GameState.UNIT_OFFERS)
+	main._on_buy(2)
 	check_eq(state.gold, gold_before, "전투 중엔 구매 불가")
 	main._on_field_tapped("b", 0)
 	check_eq(main.inspect_enemy, 0, "전투 중에도 적 상세")
@@ -202,7 +202,7 @@ func test_default_sheet_is_shop() -> void:
 	for c in main.content.get_children():
 		if c is HBoxContainer and c.get_child_count() > 0 and c.get_child(0) is Button:
 			row_cards = c.get_child_count()
-	check_eq(row_cards, GameState.UNIT_OFFERS + GameState.ITEM_OFFERS, "상점 카드 5개가 한 줄")
+	check_eq(row_cards, GameState.SHOP_SIZE, "상점 카드 5개가 한 줄")
 	free_later(main)
 
 
