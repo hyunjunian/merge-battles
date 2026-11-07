@@ -309,7 +309,8 @@ func enemy_team() -> Array[Backpack]:
 
 
 func can_fight() -> bool:
-	return not game_over and not victory and not units.is_empty()
+	# 유닛이 없어도 전투는 시작할 수 있다 (바로 진다)
+	return not game_over and not victory
 
 
 func fight() -> Dictionary:

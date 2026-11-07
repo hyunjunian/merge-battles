@@ -145,7 +145,8 @@ static func start_position(side: String, index: int, count: int) -> Vector2:
 
 
 ## 반환값
-##   winner:   "a" | "b"
+##   winner:   "a" | "b" | "" (양쪽 다 유닛이 없으면 승자 없음 = 둘 다 패배)
+##             한쪽만 유닛이 없으면 싸우지 않고 그쪽이 바로 진다 (duration 0)
 ##   duration: 끝난 시각(초)
 ##   frames:   틱마다 [팀 a 배열, 팀 b 배열]. 배열은 유닛마다 (x, z, hp). frames[0] 은 시작 상태.
 ##   events:   [{t, kind, side, src, dst, dmg, ...}]  side 는 일으킨 쪽 ("a" | "b")
@@ -160,7 +161,10 @@ static func simulate(team_a: Array[Dictionary], team_b: Array[Dictionary]) -> Di
 	var events: Array[Dictionary] = []
 	var t := 0.0
 	var winner := ""
-	while winner == "" and t < MAX_TIME - 0.0001:
+	var empty := team_a.is_empty() or team_b.is_empty()
+	if empty:
+		winner = empty_winner(team_a.size(), team_b.size())
+	while not empty and winner == "" and t < MAX_TIME - 0.0001:
 		t += DT
 		for side: String in ["a", "b"]:
 			var foe_side := "b" if side == "a" else "a"
@@ -174,7 +178,7 @@ static func simulate(team_a: Array[Dictionary], team_b: Array[Dictionary]) -> Di
 			winner = "a"
 		elif not a_alive:
 			winner = "b"
-	if winner == "":
+	if not empty and winner == "":
 		winner = "a" if _hp_ratio(sides["a"]) > _hp_ratio(sides["b"]) else "b"
 	return {
 		"winner": winner,
@@ -186,6 +190,15 @@ static func simulate(team_a: Array[Dictionary], team_b: Array[Dictionary]) -> Di
 		"ranged_a": _ranged_flags(sides["a"]),
 		"ranged_b": _ranged_flags(sides["b"]),
 	}
+
+
+## 유닛이 없는 쪽이 진다. 둘 다 없으면 승자 없음("").
+static func empty_winner(count_a: int, count_b: int) -> String:
+	if count_a > 0 and count_b == 0:
+		return "a"
+	if count_b > 0 and count_a == 0:
+		return "b"
+	return ""
 
 
 ## 한 유닛의 한 틱: 회복·독·스킬 타이머 → 목표 선택 → 이동 → 공격.

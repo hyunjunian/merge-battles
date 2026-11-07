@@ -157,3 +157,29 @@ func test_kite_step_moves_away_or_sidesteps() -> void:
 	var q := BattleSim.kite_step(corner, corner - Vector2(0, 1), 0.2)
 	check(q.distance_to(corner) > 0.1, "구석에서도 움직임")
 	check(q.x < corner.x, "가운데 쪽으로 비켜섬")
+
+
+func test_empty_side_loses_at_once() -> void:
+	var team: Array[Backpack] = [_pack(["sword"])]
+	var none: Array[Backpack] = []
+	var r := BattleSim.simulate(BattleSim.team_stats(none, "a"), BattleSim.team_stats(team, "b"))
+	check_eq(r["winner"], "b", "유닛 없는 a 가 진다")
+	check_eq(r["duration"], 0.0, "싸우지 않고 바로 끝")
+	check_eq(GameState.surviving(r, 1), 1, "상대 유닛은 모두 살아 있음")
+	r = BattleSim.simulate(BattleSim.team_stats(team, "a"), BattleSim.team_stats(none, "b"))
+	check_eq(r["winner"], "a", "유닛 없는 b 가 진다")
+	r = BattleSim.simulate(BattleSim.team_stats(none, "a"), BattleSim.team_stats(none, "b"))
+	check_eq(r["winner"], "", "둘 다 없으면 승자 없음")
+
+
+func test_player_without_units_can_fight_and_loses() -> void:
+	var gs := GameState.new(7)
+	gs.sell_unit(gs.units[0])
+	check(gs.units.is_empty())
+	check(gs.can_fight(), "유닛이 없어도 전투 시작 가능")
+	var r := gs.fight()
+	var summary := gs.apply_result(r)
+	check(not summary["won"], "유닛이 없으면 패배")
+	check_eq(summary["hp_loss"], GameState.hp_loss_for(GameState.surviving(r, 1)), "살아남은 상대 유닛만큼 체력 감소")
+	var both := GameState.new(8)
+	check(not both.apply_result({"winner": "", "frames": [[PackedFloat32Array(), PackedFloat32Array()]], "max_a": PackedFloat32Array(), "max_b": PackedFloat32Array()})["won"], "승자 없음 = 패배")

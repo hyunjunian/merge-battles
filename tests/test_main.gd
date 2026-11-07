@@ -334,3 +334,14 @@ func test_seed_from_hash() -> void:
 	check_eq(Main.seed_from_hash("#a=1&seed=7"), 7)
 	check_eq(Main.seed_from_hash(""), 0)
 	check_eq(Main.seed_from_hash("#seed=abc"), 0)
+
+
+func test_fight_without_units_loses_at_once() -> void:
+	var main := _spawn()
+	var state: GameState = main.state
+	state.sell_unit(state.units[0])
+	main.refresh()
+	main._on_fight()
+	check(not main.battling, "유닛이 없으면 전투 없이 바로 끝")
+	check(not main.summary.is_empty() and not main.summary["won"], "바로 패배")
+	free_later(main)
