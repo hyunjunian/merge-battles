@@ -28,7 +28,8 @@ var inspect_unit: int = -1
 var inspect_enemy: int = -1
 var battling: bool = false
 ## 전투 2배속 (켜 두면 다음 전투에도 유지)
-var fast: bool = false
+var speed: int = 1
+const MAX_SPEED := 16
 var last_result: Dictionary = {}
 ## 전투가 끝난 뒤 보여 줄 GameState.apply_result() 요약
 var summary: Dictionary = {}
@@ -230,15 +231,15 @@ func _build_sheet_head() -> void:
 	# 전투 중에는 같은 자리가 배속 버튼
 	var fight: Button
 	if battling:
-		fight = _button("2배속 켜짐" if fast else "2배속", _on_toggle_fast)
-		fight.theme_type_variation = "PrimaryButton" if fast else "Button"
+		fight = _button("배속 x%d" % speed, _on_toggle_fast)
+		fight.theme_type_variation = "PrimaryButton" if speed > 1 else "Button"
 	else:
 		fight = _button("전투 시작", _on_fight)
 		fight.theme_type_variation = "GoButton"
 		fight.disabled = not state.can_fight()
 	fight.custom_minimum_size = Vector2(176, 56)
 	fight.add_theme_font_size_override("font_size", 22)
-	var ic := GameIcon.make("bolt" if battling else "sword", 24, Color(0.3, 0.18, 0.02) if battling and fast else Color.WHITE)
+	var ic := GameIcon.make("bolt" if battling else "sword", 24, Color(0.3, 0.18, 0.02) if battling and speed > 1 else Color.WHITE)
 	ic.position = Vector2(10, 13)
 	fight.add_child(ic)
 	sheet_head.add_child(fight)
@@ -730,13 +731,18 @@ func _start_battle(start_time: float) -> void:
 	last_result = state.fight()
 	battling = true
 	refresh()
-	battle_view.speed_mult = 2.0 if fast else 1.0
+	battle_view.speed_mult = float(speed)
 	battle_view.play(last_result, colors_a, colors_b, start_time)
 
 
+## 배속: 1 → 2 → 4 → 8 → 16 → 1 (다음 전투에도 유지)
+static func next_speed(current: int) -> int:
+	return 1 if current >= MAX_SPEED else current * 2
+
+
 func _on_toggle_fast() -> void:
-	fast = not fast
-	battle_view.speed_mult = 2.0 if fast else 1.0
+	speed = next_speed(speed)
+	battle_view.speed_mult = float(speed)
 	refresh()
 
 

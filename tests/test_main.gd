@@ -78,6 +78,8 @@ func test_fight_flow_and_next_round() -> void:
 	check_eq(main.battle_view.speed_mult, 1.0, "기본은 보통 속도")
 	main._on_toggle_fast()
 	check_eq(main.battle_view.speed_mult, 2.0, "2배속")
+	main._on_toggle_fast()
+	check_eq(main.battle_view.speed_mult, 4.0, "4배속")
 	check(main.battling, "배속을 바꿔도 전투는 계속")
 	check(main.battle_view.mode == BattleView3D.Mode.PLAYING, "전장에서 전투 재생")
 	check(main.sheet.visible, "전투 중에도 상점 시트가 보임")
@@ -108,7 +110,7 @@ func test_fight_flow_and_next_round() -> void:
 	main._on_continue()
 	check(main.battle_view.mode == BattleView3D.Mode.PREVIEW, "다음 상대 미리보기로 돌아옴")
 	main._on_fight()
-	check_eq(main.battle_view.speed_mult, 2.0, "다음 전투도 2배속 유지")
+	check_eq(main.battle_view.speed_mult, 4.0, "다음 전투도 배속 유지")
 	free_later(main)
 
 
@@ -213,6 +215,15 @@ func test_drag_moves_unit_on_field() -> void:
 	main._on_unit_moved(0, Vector2(0.0, -5.0))
 	check(state.units[0].start_pos("a").y >= BattleSim.OWN_MIN_Z, "상대 진영으로는 못 감")
 	free_later(main)
+
+
+func test_speed_doubles_up_to_16_then_wraps() -> void:
+	var seq: Array[int] = []
+	var sp := 1
+	for i in 6:
+		sp = Main.next_speed(sp)
+		seq.append(sp)
+	check_eq(seq, [2, 4, 8, 16, 1, 2] as Array[int])
 
 
 func test_ui_helpers() -> void:
