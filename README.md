@@ -6,6 +6,7 @@ Godot 4.7.2.stable · GDScript · 세로 화면(720×1280) 프로토타입
 
 ## 게임 방식 (프로토타입)
 
+- **화면**: 위쪽에 3D 전장이 항상 떠 있다. 전장 위쪽엔 다음 상대가, 아래쪽엔 우리 유닛 자리 3개가 서 있다. 적을 탭하면 상세 전력(능력치·가방·시너지)을, 우리 유닛을 탭하면 그 유닛의 가방 편집을 아래 패널에 띄운다.
 - **베이스 캠프**: 상점에서 아이템 구매·새로고침, 판매, 같은 아이템 2개 합성(★ 등급 상승), 유닛 편성. 준비가 되면 출정한다.
 - **유닛 = 가방**: 가방에 넣은 아이템 능력치(체력·공격·방어·공속·회복)가 곧 유닛의 능력치다. 빈 가방은 출전하지 않는다. 아이템마다 칸 모양이 있고 회전할 수 있다.
 - **예산**: 가방에 넣은 아이템 비용의 합은 라운드 예산(8 + 4×(라운드−1))을 넘을 수 없다. 합성하면 능력치 2배·비용 1.5배라서 예산을 아낀다.
@@ -53,7 +54,7 @@ apt-get update -qq && apt-get install -y -qq xvfb mesa-utils libgl1-mesa-dri
 tools/check.sh                              # 임포트 → 문법 → 테스트
 tools/screenshot.sh                         # 메인 장면 스크린샷 → build/screenshots/main.png
 tools/screenshot.sh res://scenes/x.tscn 60  # 다른 장면, 60프레임 뒤
-tools/screenshot.sh "" 30 demo=camp         # 데모 화면: demo=camp | demo=prep | demo=battle (t=초 로 전투 시점 지정)
+tools/screenshot.sh "" 30 demo=camp         # 데모 화면: demo=camp | demo=prep | demo=enemy | demo=battle (t=초 로 전투 시점 지정)
 ```
 
 ## 웹 배포 (GitHub Pages)

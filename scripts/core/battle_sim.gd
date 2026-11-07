@@ -51,6 +51,7 @@ static func unit_stats(pack: Backpack, bonus: Dictionary = {}) -> Dictionary:
 
 
 ## 가방 목록 → 전투에 나가는 유닛 능력치 목록 (빈 가방은 빠진다, 시너지 반영).
+## 각 항목에 "slot"(가방 번호)과 "slots"(가방 수)를 넣어 시작 위치를 자리 기준으로 정한다.
 static func team_stats(packs: Array[Backpack]) -> Array[Dictionary]:
 	var active: Array[Backpack] = []
 	for p in packs:
@@ -58,8 +59,13 @@ static func team_stats(packs: Array[Backpack]) -> Array[Dictionary]:
 			active.append(p)
 	var bonus := Synergy.bonuses(Synergy.count_tags(active))
 	var out: Array[Dictionary] = []
-	for p in active:
-		out.append(unit_stats(p, bonus))
+	for i in packs.size():
+		if packs[i].is_empty():
+			continue
+		var s := unit_stats(packs[i], bonus)
+		s["slot"] = i
+		s["slots"] = packs.size()
+		out.append(s)
 	return out
 
 
@@ -71,7 +77,7 @@ static func is_ranged(stats: Dictionary) -> bool:
 	return float(stats.get("range", MELEE_RANGE)) > MELEE_RANGE + 0.01
 
 
-## 시작 위치: 팀마다 한 줄로 가운데 정렬.
+## 시작 위치: 팀마다 한 줄로 가운데 정렬. index 는 자리 번호, count 는 자리 수.
 static func start_position(side: String, index: int, count: int) -> Vector2:
 	var x := (index - (count - 1) / 2.0) * SPACING
 	return Vector2(x, START_Z if side == "a" else -START_Z)
@@ -211,7 +217,7 @@ static func _make_fighters(side: String, team: Array[Dictionary]) -> Array:
 			"hp": float(s["hp"]), "max_hp": float(s["hp"]), "atk": float(s["atk"]),
 			"armor": float(s["armor"]), "spd": spd, "regen": float(s["regen"]),
 			"range": float(s.get("range", MELEE_RANGE)), "move": float(s.get("move", BASE_MOVE)),
-			"pos": start_position(side, i, team.size()), "target": -1,
+			"pos": start_position(side, int(s.get("slot", i)), int(s.get("slots", team.size()))), "target": -1,
 			"cd": 0.5 / spd,
 		})
 	return out

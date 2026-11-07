@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
+[ext_resource type="Script" path="res://scripts/ui/battle_view_3d.gd" id="3_field"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -27,24 +28,52 @@ color = Color(0.11, 0.1, 0.09, 1)
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_left = 20.0
-offset_top = 16.0
-offset_right = -20.0
-offset_bottom = 64.0
+offset_left = 16.0
+offset_top = 8.0
+offset_right = -16.0
+offset_bottom = 46.0
 grow_horizontal = 2
 theme_override_colors/font_color = Color(0.95, 0.75, 0.3, 1)
-theme_override_font_sizes/font_size = 30
+theme_override_font_sizes/font_size = 26
 text = "Merge Battles"
+
+[node name="Header" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 16.0
+offset_top = 48.0
+offset_right = -16.0
+offset_bottom = 128.0
+grow_horizontal = 2
+theme_override_constants/separation = 4
+
+[node name="Field" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 132.0
+offset_bottom = 704.0
+grow_horizontal = 2
+
+[node name="BattleView3D" type="Control" parent="Field"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("3_field")
 
 [node name="Scroll" type="ScrollContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 20.0
-offset_top = 72.0
-offset_right = -20.0
-offset_bottom = -128.0
+offset_left = 16.0
+offset_top = 712.0
+offset_right = -16.0
+offset_bottom = -112.0
 grow_horizontal = 2
 grow_vertical = 2
 horizontal_scroll_mode = 0
@@ -53,7 +82,7 @@ horizontal_scroll_mode = 0
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/separation = 12
+theme_override_constants/separation = 10
 
 [node name="ActionBar" type="HBoxContainer" parent="."]
 layout_mode = 1
@@ -61,10 +90,10 @@ anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 20.0
-offset_top = -112.0
-offset_right = -20.0
-offset_bottom = -20.0
+offset_left = 16.0
+offset_top = -104.0
+offset_right = -16.0
+offset_bottom = -12.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_constants/separation = 12

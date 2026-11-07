@@ -30,8 +30,12 @@ func test_unit_stats_apply_items_and_bonus() -> void:
 
 
 func test_empty_packs_do_not_fight() -> void:
-	var packs: Array[Backpack] = [_pack(["sword"]), Backpack.new(), Backpack.new()]
-	check_eq(BattleSim.team_stats(packs).size(), 1)
+	var packs: Array[Backpack] = [Backpack.new(), _pack(["sword"]), Backpack.new()]
+	var team := BattleSim.team_stats(packs)
+	check_eq(team.size(), 1)
+	check_eq(team[0]["slot"], 1, "자리 번호 유지")
+	var r := BattleSim.simulate(team, [BattleSim.unit_stats(_pack(["apple"]))] as Array[Dictionary])
+	check_eq(BattleSim.frame_pos(r["frames"][0], 0, 0), BattleSim.start_position("a", 1, 3), "자리 기준 시작 위치")
 
 
 func test_damage_floor() -> void:

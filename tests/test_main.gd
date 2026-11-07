@@ -23,6 +23,7 @@ func test_main_scene_loads() -> void:
 	check(main.has_node("Title"), "Title 노드 없음")
 	check(main.has_node("Scroll/Content"), "Content 노드 없음")
 	check(main.has_node("ActionBar"), "ActionBar 노드 없음")
+	check(main.has_node("Field/BattleView3D"), "전장 노드 없음")
 	check((main.get_node("Title") as Label).text != "", "제목이 비어 있음")
 	free_later(main)
 
@@ -57,14 +58,53 @@ func test_depart_and_fight_flow() -> void:
 	main._on_cell_pressed(0, Vector2i(0, 0))
 	main._on_depart()
 	check(state.phase == GameState.Phase.EXPEDITION, "출정")
-	main._on_fight()
-	check(main.battle_view != null, "전투 화면")
 	var round_before := state.round_no
+	main._on_fight()
+	check(main.battling, "전투 중")
+	check(main.battle_view.mode == BattleView3D.Mode.PLAYING, "전장에서 전투 재생")
 	main.battle_view.skip()
 	check(main.battle_view.done, "건너뛰면 끝")
 	var won: bool = main.last_result["winner"] == "a"
 	check_eq(state.round_no, round_before + (1 if won else 0), "결과 반영")
+	check(not main.battling, "전투 끝")
+	main._on_continue()
+	check(main.battle_view.mode == BattleView3D.Mode.PREVIEW, "다음 상대 미리보기로 돌아옴")
 	free_later(main)
+
+
+func test_field_always_shows_slots_and_next_enemy() -> void:
+	var main := _spawn()
+	var state: GameState = main.state
+	check_eq(main.battle_view.unit_count("a"), GameState.UNIT_SLOTS, "빈자리 포함 우리 자리 3개")
+	check_eq(main.battle_view.unit_count("b"), state.enemy_team().size(), "다음 상대가 서 있음")
+	free_later(main)
+
+
+func test_tap_enemy_shows_detail_and_tap_own_unit_edits() -> void:
+	var main := _spawn()
+	main._on_field_tapped("b", 0)
+	check_eq(main.inspect_enemy, 0, "적 상세 보기")
+	check_eq(main.battle_view.highlight.get("side", ""), "b", "적 강조")
+	main._on_field_tapped("a", 2)
+	check_eq(main.inspect_enemy, -1, "우리 유닛을 누르면 상세 닫힘")
+	check_eq(main.active_unit, 2, "그 유닛 편집")
+	# 편성은 고른 유닛 가방으로 들어간다
+	var item: Item = main.state.inventory[0]
+	main._on_inventory_pressed(item)
+	main._on_cell_pressed(main.active_unit, Vector2i(0, 0))
+	check_eq(main.state.unit_of(item), 2)
+	free_later(main)
+
+
+func test_roster_keeps_empty_slots_for_our_side() -> void:
+	var packs: Array[Backpack] = [Backpack.new(), Backpack.new(), Backpack.new()]
+	packs[1].place(Item.new("short_bow"), Vector2i(0, 0))
+	var ours := Main.roster(packs, "a", "유닛 %d", true)
+	check_eq(ours.size(), 3)
+	check(ours[0]["empty"] and not ours[1]["empty"], "빈자리 표시")
+	check(ours[1]["ranged"], "원거리 표시")
+	check_eq(ours[1]["pos"], BattleSim.start_position("a", 1, 3), "전투 시작 위치와 같음")
+	check_eq(Main.roster(packs, "b", "적 %d", false).size(), 1, "상대는 빈 가방 제외")
 
 
 func test_unit_color_uses_priciest_item() -> void:

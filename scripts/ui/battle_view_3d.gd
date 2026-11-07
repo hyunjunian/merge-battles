@@ -1,35 +1,45 @@
 class_name BattleView3D
 extends Control
-## BattleSim.simulate() 기록을 3D 전장에서 재생한다.
+## 항상 떠 있는 3D 전장.
+## - 미리보기(show_preview): 우리 유닛 자리와 다음 상대가 시작 위치에 서 있다. 탭하면 unit_tapped.
+## - 재생(play): BattleSim.simulate() 기록을 재생한다. 끝나면 finished.
 ## 시뮬레이션 좌표 (x, z) → 3D (x, 0, z). 우리 팀(a)은 카메라 쪽(+z), 상대(b)는 먼 쪽(-z).
-## 체력바·피해 숫자는 3D 위치를 화면 좌표로 바꿔 2D 오버레이에 그린다.
+## 체력바·이름·피해 숫자는 3D 위치를 화면 좌표로 바꿔 2D 오버레이에 그린다.
 
 signal finished(winner: String)
+signal unit_tapped(side: String, index: int)
 
 const SPEED := 1.25
 const LUNGE_TIME := 0.25
 const FLASH_TIME := 0.2
 const FLOAT_TIME := 0.9
 const PROJECTILE_TIME := 0.22
-const TEAM_COLORS := {"a": Color(0.30, 0.65, 1.0), "b": Color(1.0, 0.35, 0.30)}
+const PICK_RADIUS := 60.0
+const TEAM_COLORS := {"a": Color(0.25, 0.55, 0.95), "b": Color(0.92, 0.30, 0.26)}
 
+enum Mode { PREVIEW, PLAYING }
+
+var mode: Mode = Mode.PREVIEW
 var result: Dictionary = {}
 var t: float = 0.0
 var done: bool = false
+## 미리보기에서 강조할 유닛: {"side": "a"|"b", "index": int} 또는 빈 사전
+var highlight: Dictionary = {}
 
 var _viewport: SubViewport
 var _camera: Camera3D
 var _world: Node3D
 var _overlay: Control
 var _next_event: int = 0
-## side → 유닛 노드 정보 배열: {root, body, mat, base_color, facing, lunge, flash, last_target, ranged}
+## side → 유닛 정보 배열: {root, body, ring, mat, ring_mat, base_color, facing, lunge, flash, last_target, empty, label, pos}
 var _units: Dictionary = {"a": [], "b": []}
 var _projectiles: Array = []  # {node, from: Vector3, to: Vector3, age}
 var _floats: Array = []  # {side, idx, text, age}
 
 
 func _init() -> void:
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	clip_contents = true
 	var container := SubViewportContainer.new()
 	container.stretch = true
 	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -47,37 +57,108 @@ func _init() -> void:
 	_build_world()
 
 
-## colors_*: 유닛마다 대표 색
-func setup(p_result: Dictionary, colors_a: Array[Color], colors_b: Array[Color], start_time: float = 0.0) -> void:
+## 미리보기 명단 항목: {"pos": Vector2, "color": Color, "ranged": bool, "empty": bool, "label": String}
+func show_preview(ours: Array[Dictionary], enemies: Array[Dictionary]) -> void:
+	mode = Mode.PREVIEW
+	result = {}
+	done = false
+	_clear_units()
+	for side: String in ["a", "b"]:
+		for e: Dictionary in (ours if side == "a" else enemies):
+			var u := _make_unit(side, e.get("color", Color.GRAY), e.get("ranged", false), e.get("empty", false))
+			u["label"] = e.get("label", "")
+			var p: Vector2 = e["pos"]
+			u["pos"] = Vector3(p.x, 0, p.y)
+			_units[side].append(u)
+	_update_units()
+	_overlay.queue_redraw()
+
+
+## colors_*: 전투에 나가는 유닛마다 대표 색 (result 의 유닛 순서)
+func play(p_result: Dictionary, colors_a: Array[Color], colors_b: Array[Color], start_time: float = 0.0) -> void:
+	mode = Mode.PLAYING
 	result = p_result
 	t = 0.0
 	done = false
 	_next_event = 0
+	highlight = {}
+	_clear_units()
 	for side: String in ["a", "b"]:
-		for u: Dictionary in _units[side]:
-			u["root"].queue_free()
-		_units[side] = []
 		var maxes: PackedFloat32Array = result["max_" + side]
 		var ranged: Array = result.get("ranged_" + side, [])
 		var colors := colors_a if side == "a" else colors_b
 		for i in maxes.size():
 			var col: Color = colors[i] if i < colors.size() else Color.GRAY
-			_units[side].append(_make_unit(side, col, i < ranged.size() and bool(ranged[i])))
+			_units[side].append(_make_unit(side, col, i < ranged.size() and bool(ranged[i]), false))
 	_advance(start_time)
 
 
 func skip() -> void:
-	_advance(duration() - t + 0.01)
+	if mode == Mode.PLAYING:
+		_advance(duration() - t + 0.01)
 
 
 func duration() -> float:
 	return float(result.get("duration", 0.0))
 
 
-func _process(delta: float) -> void:
-	if result.is_empty() or done:
+func unit_count(side: String) -> int:
+	return _units[side].size()
+
+
+func set_highlight(side: String, index: int) -> void:
+	highlight = {"side": side, "index": index} if index >= 0 else {}
+	_update_units()
+	_overlay.queue_redraw()
+
+
+## 화면 좌표 → 가장 가까운 유닛 {side, index}. 없으면 빈 사전.
+func pick(screen_pos: Vector2) -> Dictionary:
+	var best := {}
+	var best_d := PICK_RADIUS
+	for side: String in ["a", "b"]:
+		for i in _units[side].size():
+			var u: Dictionary = _units[side][i]
+			var root: Node3D = u["root"]
+			var p := _camera.unproject_position(root.position + Vector3(0, 0.9, 0))
+			var d := p.distance_to(screen_pos)
+			if d < best_d:
+				best_d = d
+				best = {"side": side, "index": i}
+	return best
+
+
+## 유닛 발밑의 화면 좌표 (테스트·탭 안내용)
+func screen_position(side: String, index: int) -> Vector2:
+	var root: Node3D = _units[side][index]["root"]
+	return _camera.unproject_position(root.position + Vector3(0, 0.7, 0))
+
+
+func _gui_input(event: InputEvent) -> void:
+	var mb := event as InputEventMouseButton
+	if mb == null or not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT or mode != Mode.PREVIEW:
 		return
-	_advance(delta * SPEED)
+	var hit := pick(mb.position)
+	if not hit.is_empty():
+		unit_tapped.emit(hit["side"], hit["index"])
+		accept_event()
+
+
+func _process(delta: float) -> void:
+	if mode == Mode.PLAYING and not done:
+		_advance(delta * SPEED)
+	elif mode == Mode.PREVIEW:
+		_idle()
+
+
+# ── 미리보기 ──────────────────────────────────────────
+
+func _idle() -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	for side: String in ["a", "b"]:
+		for i in _units[side].size():
+			var body: Node3D = _units[side][i]["body"]
+			body.position.y = absf(sin(now * 2.0 + i * 1.3 + (0.0 if side == "a" else 0.7))) * 0.05
 
 
 # ── 재생 ──────────────────────────────────────────────
@@ -119,8 +200,10 @@ func _consume_events() -> void:
 		_next_event += 1
 
 
-## 현재 시각의 위치·체력 (틱 사이를 선형 보간)
+## 현재 위치·체력. 재생 중이면 기록을 틱 사이 선형 보간, 미리보기면 고정 위치.
 func _state(side: String, i: int) -> Dictionary:
+	if mode == Mode.PREVIEW:
+		return {"pos": _units[side][i]["pos"], "vel": Vector2.ZERO, "hp": 1.0}
 	var frames: Array = result["frames"]
 	var s := 0 if side == "a" else 1
 	var ft := t / BattleSim.DT
@@ -129,11 +212,7 @@ func _state(side: String, i: int) -> Dictionary:
 	var k := clampf(ft - f0, 0.0, 1.0)
 	var p := BattleSim.frame_pos(frames[f0], s, i).lerp(BattleSim.frame_pos(frames[f1], s, i), k)
 	var prev := BattleSim.frame_pos(frames[maxi(f0 - 1, 0)], s, i)
-	return {
-		"pos": Vector3(p.x, 0.0, p.y),
-		"vel": p - prev,
-		"hp": BattleSim.frame_hp(frames[f0], s, i),
-	}
+	return {"pos": Vector3(p.x, 0.0, p.y), "vel": p - prev, "hp": BattleSim.frame_hp(frames[f0], s, i)}
 
 
 func _update_units() -> void:
@@ -145,7 +224,6 @@ func _update_units() -> void:
 			var root: Node3D = u["root"]
 			var pos: Vector3 = st["pos"]
 			var alive: bool = st["hp"] > 0.0
-			# 바라보는 방향: 마지막으로 때린 적, 없으면 움직이는 방향
 			var look := Vector3.ZERO
 			if u["last_target"] >= 0 and u["last_target"] < _units[foe].size():
 				look = _state(foe, u["last_target"])["pos"] - pos
@@ -156,17 +234,27 @@ func _update_units() -> void:
 				u["facing"] = lerp_angle(u["facing"], atan2(look.x, look.z), 0.25)
 			root.position = pos
 			root.rotation.y = u["facing"]
+			var lit: bool = not highlight.is_empty() and highlight["side"] == side and highlight["index"] == i
+			var ring: MeshInstance3D = u["ring"]
+			ring.scale = Vector3.ONE * (1.4 if lit else 1.0)
+			var ring_col: Color = TEAM_COLORS[side]
+			if u["empty"]:
+				ring_col.a = 0.35
+			(u["ring_mat"] as StandardMaterial3D).albedo_color = Color(1.0, 0.8, 0.1) if lit else ring_col
+			if u["empty"]:
+				continue
 			var body: Node3D = u["body"]
-			if alive:
-				var lunge := sin(PI * u["lunge"] / LUNGE_TIME) if u["lunge"] > 0.0 else 0.0
-				var bob := absf(sin(t * 12.0)) * 0.08 if vel.length() > 0.02 else 0.0
-				body.position = Vector3(0, bob, 0.45 * lunge)
-				body.rotation.x = 0.0
-			else:
-				body.rotation.x = lerpf(body.rotation.x, PI / 2.0, 0.2)
-				body.position = Vector3(0, 0.0, 0)
+			if mode == Mode.PLAYING:
+				if alive:
+					var lunge := sin(PI * u["lunge"] / LUNGE_TIME) if u["lunge"] > 0.0 else 0.0
+					var bob := absf(sin(t * 12.0)) * 0.08 if vel.length() > 0.02 else 0.0
+					body.position = Vector3(0, bob, 0.45 * lunge)
+					body.rotation.x = 0.0
+				else:
+					body.rotation.x = lerpf(body.rotation.x, PI / 2.0, 0.2)
+					body.position = Vector3.ZERO
 			var mat: StandardMaterial3D = u["mat"]
-			var base: Color = u["base_color"] if alive else Color(0.3, 0.3, 0.3)
+			var base: Color = u["base_color"] if alive else Color(0.5, 0.5, 0.5)
 			mat.albedo_color = base.lerp(Color(1, 0.2, 0.2), u["flash"] / FLASH_TIME) if u["flash"] > 0.0 else base
 
 
@@ -178,7 +266,7 @@ func _spawn_projectile(side: String, src: int, foe: String, dst: int, age: float
 	mesh.mesh = sphere
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = Color(1.0, 0.8, 0.3) if side == "a" else Color(1.0, 0.45, 0.9)
+	mat.albedo_color = Color(1.0, 0.7, 0.1) if side == "a" else Color(0.85, 0.2, 0.8)
 	mesh.material_override = mat
 	_world.add_child(mesh)
 	var from: Vector3 = _state(side, src)["pos"] + Vector3(0, 1.1, 0)
@@ -192,7 +280,7 @@ func _update_projectiles(dt: float) -> void:
 	for p: Dictionary in _projectiles:
 		p["age"] += dt
 		var node: MeshInstance3D = p["node"]
-		if p["age"] >= PROJECTILE_TIME or done:
+		if p["age"] >= PROJECTILE_TIME or done or mode != Mode.PLAYING:
 			node.queue_free()
 			continue
 		var k: float = p["age"] / PROJECTILE_TIME
@@ -203,24 +291,43 @@ func _update_projectiles(dt: float) -> void:
 	_projectiles = keep
 
 
-# ── 2D 오버레이: 체력바, 피해 숫자, 시간 ──────────────
+func _clear_units() -> void:
+	for side: String in ["a", "b"]:
+		for u: Dictionary in _units[side]:
+			(u["root"] as Node).queue_free()
+		_units[side] = []
+	for p: Dictionary in _projectiles:
+		(p["node"] as Node).queue_free()
+	_projectiles = []
+	_floats = []
+
+
+# ── 2D 오버레이: 이름, 체력바, 피해 숫자, 시간 ────────
 
 func _draw_overlay() -> void:
-	if result.is_empty() or _camera == null:
+	if _camera == null:
 		return
 	var font := get_theme_default_font()
 	for side: String in ["a", "b"]:
-		var maxes: PackedFloat32Array = result["max_" + side]
-		for i in maxes.size():
+		for i in _units[side].size():
+			var u: Dictionary = _units[side][i]
 			var st := _state(side, i)
+			if mode == Mode.PREVIEW:
+				var foot := _camera.unproject_position(st["pos"])
+				var col := Color(0.15, 0.15, 0.2) if not u["empty"] else Color(0.45, 0.45, 0.5)
+				_overlay.draw_string(font, foot + Vector2(-50, 34), u["label"], HORIZONTAL_ALIGNMENT_CENTER, 100, 17, col)
+				if u["empty"]:
+					_overlay.draw_string(font, foot + Vector2(-50, 52), "빈자리", HORIZONTAL_ALIGNMENT_CENTER, 100, 14, col)
+				continue
 			if st["hp"] <= 0.0:
 				continue
-			var head: Vector3 = st["pos"] + Vector3(0, 2.0, 0)
+			var head: Vector3 = st["pos"] + Vector3(0, 2.5, 0)
 			if _camera.is_position_behind(head):
 				continue
 			var p := _camera.unproject_position(head)
-			var bar := Rect2(p - Vector2(34, 6), Vector2(68, 9))
-			_overlay.draw_rect(bar.grow(1.5), Color(0, 0, 0, 0.7))
+			var maxes: PackedFloat32Array = result["max_" + side]
+			var bar := Rect2(p - Vector2(30, 6), Vector2(60, 8))
+			_overlay.draw_rect(bar.grow(1.5), Color(0, 0, 0, 0.75))
 			var ratio := clampf(st["hp"] / maxes[i], 0.0, 1.0)
 			_overlay.draw_rect(Rect2(bar.position, Vector2(bar.size.x * ratio, bar.size.y)), TEAM_COLORS[side])
 	for f: Dictionary in _floats:
@@ -228,13 +335,13 @@ func _draw_overlay() -> void:
 		var p := _camera.unproject_position(st["pos"] + Vector3(0, 2.2, 0))
 		var a: float = 1.0 - f["age"] / FLOAT_TIME
 		p += Vector2(14, -10 - 50.0 * f["age"])
-		_overlay.draw_string_outline(font, p, f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, 26, 4, Color(0, 0, 0, a))
-		_overlay.draw_string(font, p, f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(1, 0.85, 0.3, a))
-	_overlay.draw_string_outline(font, Vector2(16, 36), "%.1f초" % t, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, 4, Color(0, 0, 0, 0.6))
-	_overlay.draw_string(font, Vector2(16, 36), "%.1f초" % t, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
+		_overlay.draw_string_outline(font, p, f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, 24, 4, Color(0, 0, 0, a))
+		_overlay.draw_string(font, p, f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(1, 0.85, 0.3, a))
+	if mode == Mode.PLAYING:
+		_overlay.draw_string(font, Vector2(14, 30), "%.1f초" % t, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.2, 0.2, 0.25))
 
 
-# ── 3D 장면 만들기 ────────────────────────────────────
+# ── 3D 장면 ───────────────────────────────────────────
 
 func _build_world() -> void:
 	_world = Node3D.new()
@@ -242,56 +349,36 @@ func _build_world() -> void:
 
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.16, 0.20, 0.26)
+	env.background_color = Color(0.86, 0.87, 0.89)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.75, 0.78, 0.85)
-	env.ambient_light_energy = 0.55
+	env.ambient_light_color = Color(1, 1, 1)
+	env.ambient_light_energy = 0.6
 	var we := WorldEnvironment.new()
 	we.environment = env
 	_world.add_child(we)
 
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-55, -30, 0)
-	sun.light_energy = 1.1
+	sun.rotation_degrees = Vector3(-60, -25, 0)
+	sun.light_energy = 0.9
 	sun.shadow_enabled = true
 	_world.add_child(sun)
 
 	_camera = Camera3D.new()
-	_camera.keep_aspect = Camera3D.KEEP_WIDTH
-	_camera.fov = 46.0
-	_camera.position = Vector3(0, 11.0, 13.0)
+	_camera.fov = 48.0
 	_world.add_child(_camera)
-	_camera.look_at_from_position(_camera.position, Vector3(0, 0, 2.6), Vector3.UP)
+	_camera.look_at_from_position(Vector3(0, 17.0, 8.5), Vector3(0, 0, 0.6), Vector3.UP)
 
-	var w := BattleSim.HALF_W * 2.0
-	var d := BattleSim.HALF_D * 2.0
-	# 바깥 땅, 전장, 진영 표시, 가운데 선
-	_add_box(Vector3(0, -0.06, 0), Vector3(w + 8, 0.1, d + 8), Color(0.22, 0.30, 0.18))
-	_add_box(Vector3(0, -0.02, 0), Vector3(w + 1.0, 0.04, d + 1.0), Color(0.42, 0.36, 0.26))
-	_add_box(Vector3(0, -0.005, d / 4.0 + 0.25), Vector3(w + 1.0, 0.02, d / 2.0 - 0.5), Color(0.40, 0.38, 0.30))
-	_add_box(Vector3(0, -0.005, -d / 4.0 - 0.25), Vector3(w + 1.0, 0.02, d / 2.0 - 0.5), Color(0.44, 0.34, 0.26))
-	_add_box(Vector3(0, 0.0, 0), Vector3(w + 1.0, 0.02, 0.08), Color(0.85, 0.80, 0.65))
-	# 울타리 기둥
-	for x in [-w / 2.0 - 0.6, w / 2.0 + 0.6]:
-		var z := -d / 2.0 - 0.5
-		while z <= d / 2.0 + 0.6:
-			_add_box(Vector3(x, 0.3, z), Vector3(0.18, 0.6, 0.18), Color(0.45, 0.32, 0.20))
-			z += 1.5
-	# 바위 몇 개 (장식)
-	var rocks := [Vector3(-6.2, 0.3, -3), Vector3(6.0, 0.25, 2.5), Vector3(-5.8, 0.2, 5.5), Vector3(6.3, 0.35, -6)]
-	for r: Vector3 in rocks:
-		_add_box(r, Vector3(0.9, r.y * 2.0, 0.8), Color(0.45, 0.45, 0.48))
-
-
-func _add_box(pos: Vector3, box_size: Vector3, color: Color) -> MeshInstance3D:
-	var m := MeshInstance3D.new()
+	# 흰 바닥 (전장 크기)
+	var floor_mesh := MeshInstance3D.new()
 	var box := BoxMesh.new()
-	box.size = box_size
-	m.mesh = box
-	m.material_override = _mat(color)
-	m.position = pos
-	_world.add_child(m)
-	return m
+	box.size = Vector3(BattleSim.HALF_W * 2.0 + 1.6, 0.1, BattleSim.HALF_D * 2.0 + 1.6)
+	floor_mesh.mesh = box
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1, 1, 1)
+	mat.roughness = 1.0
+	floor_mesh.material_override = mat
+	floor_mesh.position.y = -0.05
+	_world.add_child(floor_mesh)
 
 
 func _mat(color: Color) -> StandardMaterial3D:
@@ -301,9 +388,10 @@ func _mat(color: Color) -> StandardMaterial3D:
 	return mat
 
 
-## 유닛 모형: 진영 고리 + 몸통(캡슐) + 머리 + 무기
-func _make_unit(side: String, color: Color, ranged: bool) -> Dictionary:
+## 유닛 모형: 진영 고리 + 몸통(팀 색) + 머리 + 모자·망토(유닛 색) + 무기. empty 면 고리만.
+func _make_unit(side: String, color: Color, ranged: bool, empty: bool) -> Dictionary:
 	var root := Node3D.new()
+	root.scale = Vector3.ONE * 1.3
 	_world.add_child(root)
 
 	var ring := MeshInstance3D.new()
@@ -314,6 +402,7 @@ func _make_unit(side: String, color: Color, ranged: bool) -> Dictionary:
 	ring.mesh = disc
 	var ring_mat := StandardMaterial3D.new()
 	ring_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	ring_mat.albedo_color = TEAM_COLORS[side]
 	ring.material_override = ring_mat
 	ring.position.y = 0.02
@@ -321,9 +410,16 @@ func _make_unit(side: String, color: Color, ranged: bool) -> Dictionary:
 
 	var body := Node3D.new()
 	root.add_child(body)
-	# 몸통은 팀 색, 모자·망토는 유닛 대표 색(가장 비싼 아이템)
-	var team_body: Color = TEAM_COLORS[side].lerp(Color(0.9, 0.9, 0.9), 0.15)
+	var team_body: Color = TEAM_COLORS[side].lerp(Color.WHITE, 0.15)
 	var mat := _mat(team_body)
+	var info := {
+		"root": root, "body": body, "ring": ring, "mat": mat, "ring_mat": ring_mat, "base_color": team_body,
+		"facing": 0.0 if side == "b" else PI, "lunge": 0.0, "flash": 0.0,
+		"last_target": -1, "empty": empty, "label": "", "pos": Vector3.ZERO,
+	}
+	if empty:
+		return info
+
 	var torso := MeshInstance3D.new()
 	var capsule := CapsuleMesh.new()
 	capsule.radius = 0.3
@@ -360,7 +456,6 @@ func _make_unit(side: String, color: Color, ranged: bool) -> Dictionary:
 	cape.position = Vector3(0, 0.75, -0.3)
 	body.add_child(cape)
 
-	# 앞쪽(+z)을 보는 무기
 	if ranged:
 		var staff := MeshInstance3D.new()
 		var stick := CylinderMesh.new()
@@ -378,7 +473,7 @@ func _make_unit(side: String, color: Color, ranged: bool) -> Dictionary:
 		tip.mesh = gem
 		var glow := StandardMaterial3D.new()
 		glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		glow.albedo_color = Color(1.0, 0.85, 0.4)
+		glow.albedo_color = Color(1.0, 0.75, 0.2)
 		tip.material_override = glow
 		tip.position = Vector3(0.36, 1.45, 0.15)
 		body.add_child(tip)
@@ -387,12 +482,7 @@ func _make_unit(side: String, color: Color, ranged: bool) -> Dictionary:
 		var bm := BoxMesh.new()
 		bm.size = Vector3(0.08, 0.08, 0.8)
 		blade.mesh = bm
-		blade.material_override = _mat(Color(0.85, 0.87, 0.9))
+		blade.material_override = _mat(Color(0.55, 0.57, 0.62))
 		blade.position = Vector3(0.36, 0.7, 0.4)
 		body.add_child(blade)
-
-	return {
-		"root": root, "body": body, "mat": mat, "base_color": team_body,
-		"facing": 0.0 if side == "b" else PI, "lunge": 0.0, "flash": 0.0,
-		"last_target": -1, "ranged": ranged,
-	}
+	return info
