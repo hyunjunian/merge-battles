@@ -237,3 +237,48 @@ func test_ui_helpers() -> void:
 	var r := Main.roster(packs, "a")
 	check(r[0]["ranged"], "원거리 표시")
 	check_eq(r[0]["pos"], BattleSim.slot_position("a", 4), "자리 위치")
+
+
+func test_detail_shows_live_hp_and_cooldowns() -> void:
+	var main := _spawn()
+	var state: GameState = main.state
+	var s := BattleSim.unit_stats(state.units[0])
+	var before: Dictionary = main._live_source("a", 0, s)
+	check(not before["live"], "전투 전엔 고정값")
+	check_eq(before["hp"], s["hp"], "최대 체력")
+	check_eq(before["interval"], 1.0 / s["spd"], "공격 간격")
+	var rows := LiveStats.rows(before)
+	check_eq(rows[0][0], "체력")
+	check_eq(rows[1][0], "공격")
+	main._on_fight()
+	main.battle_view._advance(1.0)
+	var during: Dictionary = main._live_source("a", 0, s)
+	check(during["live"], "전투 중엔 실시간")
+	check(during["cd"] >= 0.0 and during["cd"] <= during["interval"] + 0.001, "쿨타임 범위")
+	free_later(main)
+
+
+func test_tap_item_in_readonly_backpack_shows_info() -> void:
+	var main := _spawn()
+	var enemy: Backpack = main.state.enemy_team()[0]
+	main._on_field_tapped("b", 0)
+	if enemy.items().is_empty():
+		free_later(main)
+		return
+	var item: Item = enemy.items()[0]
+	var cell: Vector2i = enemy.position_of(item) + item.cells()[0]
+	main._on_info_cell(0, cell, enemy)
+	check(main.info_item != null and main.info_item.def_id == item.def_id, "아이템 정보")
+	main._on_info_cell(0, cell, enemy)
+	check(main.info_item == null, "다시 누르면 닫힘")
+	free_later(main)
+
+
+func test_frames_record_cooldowns() -> void:
+	var a: Array[Dictionary] = [BattleSim.unit_stats(Backpack.new("soldier"))]
+	var b: Array[Dictionary] = [BattleSim.unit_stats(Backpack.new("soldier"))]
+	var r := BattleSim.simulate(a, b)
+	var u := BattleSim.frame_unit(r["frames"][5], 0, 0)
+	for k: String in BattleSim.FRAME_KEYS:
+		check(u.has(k), "기록에 %s" % k)
+	check_eq(u["spd"], a[0]["spd"])

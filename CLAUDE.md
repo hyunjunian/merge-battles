@@ -15,11 +15,11 @@ Godot 4.7.2.stable · GDScript 게임 프로젝트. Claude Code 클라우드 세
 | `scenes/` | 장면(`.tscn`) |
 | `scripts/` | GDScript |
 | `scripts/core/` | 게임 규칙 (UI 없음, 테스트 대상): 유닛·아이템 정의, 스킬(`skills.gd`), 가격·상점 확률, 가방, 시너지, 전투, 적 생성, 게임 상태(로그라이크), 기록 |
-| `scripts/ui/` | 그리기 전용: 3D 전투 재생 `battle_view_3d.gd`, 가방 그리드, 스타일 `ui_style.gd`(색·테마·버튼 변형·등급 색), 도형 아이콘 `game_icon.gd`, 칸 모양 미리보기 `shape_icon.gd`. 전투 결과는 `BattleSim` 이 미리 계산하고 화면은 재생만 한다 |
+| `scripts/ui/` | 그리기 전용: 3D 전투 재생 `battle_view_3d.gd`(재생 중 유닛 상태 `live_unit`), 상세 패널 체력·쿨타임 막대 `live_stats.gd`, 가방 그리드, 스타일 `ui_style.gd`(색·테마·버튼 변형·등급 색), 도형 아이콘 `game_icon.gd`, 칸 모양 미리보기 `shape_icon.gd`. 전투 결과는 `BattleSim` 이 미리 계산하고 화면은 재생만 한다 |
 | `assets/` | 그림·소리·글꼴. 한글 글꼴은 `assets/theme.tres`(메인 장면 theme)로 적용 |
 | `tests/` | `test_*.gd` 테스트(애드온 없는 자체 실행기 `run_tests.gd`) |
 | `tools/check.sh` | 임포트 → 문법 검사 → 테스트 |
-| `tools/screenshot.sh` | 장면을 실행해 `build/screenshots/<장면>.png` 저장 (xvfb 필요). 추가 인자 `demo=start\|shop\|units\|enemy\|battle\|result\|gameover` 로 데모 화면, `t=<초>` 로 전투 시점, `inspect=a1\|b0` 로 전투 중 상세 |
+| `tools/screenshot.sh` | 장면을 실행해 `build/screenshots/<장면>.png` 저장 (xvfb 필요). 추가 인자 `demo=start\|shop\|units\|enemy\|battle\|result\|gameover` 로 데모 화면, `t=<초>` 로 전투 시점, `inspect=a1\|b0` 로 전투 중 상세, `info=1` 로 그 가방 첫 아이템 정보 |
 
 ## 규칙
 1. **커밋 전 `tools/check.sh`가 통과해야 한다.** 실패하면 고친 뒤 커밋한다.

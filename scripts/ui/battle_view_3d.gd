@@ -364,6 +364,21 @@ func _float(side: String, idx: int, text: String, kind: String, age: float, font
 	_floats.append({"side": side, "idx": idx, "text": text, "age": age, "color": FX_COLORS.get(kind, Color.WHITE), "size": font_size})
 
 
+## 재생 중인 유닛의 지금 상태 (BattleSim.frame_unit) + max_hp. 재생 중이 아니거나 없으면 빈 사전.
+func live_unit(side: String, i: int) -> Dictionary:
+	if mode != Mode.PLAYING or result.is_empty():
+		return {}
+	var frames: Array = result["frames"]
+	var s := 0 if side == "a" else 1
+	var maxes: PackedFloat32Array = result["max_" + side]
+	if i < 0 or i >= maxes.size():
+		return {}
+	var fi := clampi(floori(t / BattleSim.DT), 0, frames.size() - 1)
+	var u := BattleSim.frame_unit(frames[fi], s, i)
+	u["max_hp"] = maxes[i]
+	return u
+
+
 ## 현재 위치·체력. 재생 중이면 기록을 틱 사이 선형 보간, 미리보기면 고정 위치.
 func _state(side: String, i: int) -> Dictionary:
 	if mode == Mode.PREVIEW:

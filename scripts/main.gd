@@ -21,6 +21,8 @@ var records: Dictionary = {}
 ## 기록을 저장할 파일 (테스트는 다른 경로를 쓴다)
 var records_path: String = Records.DEFAULT_PATH
 var selected: Item = null
+## 보기 전용 상세(전투 중·적 정찰)에서 누른 아이템 (정보만 보여 줌)
+var info_item: Item = null
 var message: String = ""
 ## 시트에 정보를 띄운 우리 유닛 번호 (state.units 인덱스, -1 이면 없음)
 var inspect_unit: int = -1
@@ -368,8 +370,11 @@ func _add_unit_editor() -> void:
 	panel.add_child(row)
 	var view := BackpackView.new()
 	view.setup(pack, inspect_unit, cell_size_for(pack), not battling)
-	view.selected = selected
-	view.cell_pressed.connect(_on_cell_pressed)
+	view.selected = info_item if battling else selected
+	if battling:
+		view.cell_pressed.connect(_on_info_cell.bind(pack))
+	else:
+		view.cell_pressed.connect(_on_cell_pressed)
 	row.add_child(view)
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -378,6 +383,7 @@ func _add_unit_editor() -> void:
 	info.add_child(_label("%dx%d 가방 · 가치 %d원" % [pack.width, pack.height, pack.total_value()], 15, S.MUTED))
 	var s := BattleSim.unit_stats(pack, Synergy.bonuses(Synergy.count_tags(state.units)))
 	info.add_child(_stat_row(s))
+	info.add_child(LiveStats.make(_live_source.bind("a", inspect_unit, s)))
 	info.add_child(_label("초당 피해 %.1f" % dps(s), 15, S.MUTED))
 	_add_skill_lines(info, pack)
 	var spacer := Control.new()
@@ -389,6 +395,8 @@ func _add_unit_editor() -> void:
 		info.add_child(sell)
 	row.add_child(info)
 	content.add_child(panel)
+	if battling:
+		_add_item_info(pack)
 
 
 func _add_inventory() -> void:
@@ -525,6 +533,8 @@ func _add_enemy_detail() -> void:
 	panel.add_child(row)
 	var view := BackpackView.new()
 	view.setup(pack, inspect_enemy, cell_size_for(pack), false)
+	view.selected = info_item
+	view.cell_pressed.connect(_on_info_cell.bind(pack))
 	row.add_child(view)
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -532,10 +542,12 @@ func _add_enemy_detail() -> void:
 	info.add_child(_label(pack.display_name(), 24, S.RED.lightened(0.3), false, true))
 	info.add_child(_label("%dx%d 가방 · 가치 %d원" % [pack.width, pack.height, pack.total_value()], 15, S.MUTED))
 	info.add_child(_stat_row(s))
+	info.add_child(LiveStats.make(_live_source.bind("b", inspect_enemy, s)))
 	info.add_child(_label("초당 피해 %.1f" % dps(s), 15, S.MUTED))
 	_add_skill_lines(info, pack)
 	row.add_child(info)
 	content.add_child(panel)
+	_add_item_info(pack)
 	for item in pack.items():
 		var line := HBoxContainer.new()
 		line.add_theme_constant_override("separation", 8)
@@ -591,6 +603,7 @@ func _add_game_over_panel() -> void:
 func _on_field_tapped(side: String, index: int) -> void:
 	message = ""
 	selected = null
+	info_item = null
 	if side == "b":
 		inspect_enemy = -1 if inspect_enemy == index else index
 		inspect_unit = -1
@@ -617,11 +630,12 @@ func _on_hud_input(event: InputEvent) -> void:
 
 ## 상세 패널 밖을 누르면 상점으로
 func _on_back_to_shop() -> void:
-	if inspect_unit < 0 and inspect_enemy < 0 and selected == null:
+	if inspect_unit < 0 and inspect_enemy < 0 and selected == null and info_item == null:
 		return
 	inspect_unit = -1
 	inspect_enemy = -1
 	selected = null
+	info_item = null
 	message = ""
 	refresh()
 
@@ -720,8 +734,10 @@ func _start_battle(start_time: float) -> void:
 	if not state.can_fight():
 		return
 	selected = null
+	info_item = null
 	message = ""
 	inspect_enemy = -1
+	inspect_unit = -1
 	var colors_a: Array[Color] = []
 	for u in state.units:
 		colors_a.append(unit_color(u))
@@ -818,6 +834,11 @@ func _setup_demo(kind: String) -> void:
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("inspect=") and a.length() >= 10:
 				_on_field_tapped(a.substr(8, 1), a.substr(9).to_int())
+		# info=1 : 상세 패널 가방의 첫 아이템 정보 열기 (스크린샷용)
+		if OS.get_cmdline_user_args().has("info=1") and inspect_unit >= 0:
+			var pack := state.units[inspect_unit]
+			if not pack.is_empty():
+				_on_info_cell(inspect_unit, pack.placements[0]["pos"], pack)
 		return
 	elif kind == "result":
 		last_result = state.fight()
@@ -846,6 +867,57 @@ func _label(text: String, font_size: int = 20, color: Color = S.TEXT, wrap: bool
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	return l
+
+
+## 상세 패널의 체력·쿨타임 값. 전투 중이면 재생 중인 그 순간 값, 아니면 고정값.
+func _live_source(side: String, idx: int, s: Dictionary) -> Dictionary:
+	var sk: Dictionary = s.get("skills", Skills.aggregate([]))
+	var d := {
+		"hp": s["hp"], "max_hp": s["hp"], "shield": sk["shield"], "cd": 0.0,
+		"interval": 1.0 / maxf(0.01, s["spd"]), "live": false,
+		"heal_cd": sk["heal_cd"] if sk["heal_amount"] > 0.0 else 0.0, "heal_t": 0.0,
+		"fire_cd": sk["fireball_cd"] if sk["fireball_dmg"] > 0.0 else 0.0, "fire_t": 0.0,
+	}
+	if battling and is_instance_valid(battle_view):
+		var live := battle_view.live_unit(side, idx)
+		if not live.is_empty():
+			for k: String in ["hp", "max_hp", "shield", "cd", "heal_t", "fire_t"]:
+				d[k] = live[k]
+			d["interval"] = 1.0 / maxf(0.01, live["spd"])
+			d["live"] = true
+	return d
+
+
+## 보기 전용 가방에서 아이템을 누르면 그 정보 (같은 아이템을 다시 누르면 닫힘)
+func _on_info_cell(_unit_index: int, cell: Vector2i, pack: Backpack) -> void:
+	var at := pack.item_at(cell)
+	info_item = null if at == info_item else at
+	refresh()
+
+
+## 아이템 정보 패널 (보기 전용)
+func _add_item_info(pack: Backpack) -> void:
+	if info_item == null or not pack.has_item(info_item):
+		return
+	var item := info_item
+	var panel := _panel(Color(0.25, 0.19, 0.06, 0.95), S.rarity_color(item.cost()))
+	var box := VBoxContainer.new()
+	panel.add_child(box)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	head.add_child(ShapeIcon.for_item(item, 16.0))
+	head.add_child(_label(item.display_name(), 24, S.GOLD, false, true))
+	var tag_name: String = Synergy.TRAITS[item.tag()]["name"]
+	head.add_child(_label("[%s] · %s · %d원" % [tag_name, S.rarity_name(item.cost()), item.cost()], 15, S.MUTED))
+	box.add_child(head)
+	box.add_child(_label(Pricing.describe_stats(item.stats(), float(item.def().get("range", 0.0))), 18, S.TEXT, true))
+	if item.has_skill():
+		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", 6)
+		h.add_child(GameIcon.make("star", 20, S.GOLD))
+		h.add_child(_label(Skills.describe(item.skill()), 17, S.GOLD, true))
+		box.add_child(h)
+	content.add_child(panel)
 
 
 ## 스킬 아이템 표시: 별 + 스킬 이름

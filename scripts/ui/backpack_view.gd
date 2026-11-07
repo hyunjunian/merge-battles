@@ -17,7 +17,8 @@ func setup(p_pack: Backpack, p_unit_index: int, p_cell_size: float = 52.0, p_int
 	cell_size = p_cell_size
 	interactive = p_interactive
 	custom_minimum_size = Vector2(p_pack.width, p_pack.height) * cell_size
-	mouse_filter = Control.MOUSE_FILTER_STOP if interactive else Control.MOUSE_FILTER_IGNORE
+	# 보기 전용(interactive=false)이어도 칸 탭은 받는다 (아이템 정보 보기용)
+	mouse_filter = Control.MOUSE_FILTER_STOP
 	queue_redraw()
 
 
@@ -29,8 +30,6 @@ func cell_at(local_pos: Vector2) -> Vector2i:
 
 
 func _gui_input(event: InputEvent) -> void:
-	if not interactive:
-		return
 	var mb := event as InputEventMouseButton
 	if mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 		var c := cell_at(mb.position)

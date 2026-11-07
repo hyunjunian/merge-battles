@@ -2,13 +2,21 @@ extends "res://tests/test_case.gd"
 ## 로그라이크 규칙: 시작 상태, 상점, 판매, 체력, 수입(연승/연패), 게임 오버, 적 생성
 
 
+## 유닛 하나의 프레임 값 (BattleSim.STRIDE 개, hp 는 세 번째)
+func _unit_frame(hp: float) -> PackedFloat32Array:
+	var arr := PackedFloat32Array()
+	arr.resize(BattleSim.STRIDE)
+	arr[2] = hp
+	return arr
+
+
 func _result(winner: String, enemy_alive: int, enemy_total: int = 3) -> Dictionary:
 	# 마지막 프레임만 의미 있는 가짜 전투 결과
-	var a := PackedFloat32Array([0, 0, 10.0])
+	var a := _unit_frame(10.0)
 	var b := PackedFloat32Array()
 	var maxes := PackedFloat32Array()
 	for i in enemy_total:
-		b.append_array([0, 0, 5.0 if i < enemy_alive else 0.0])
+		b.append_array(_unit_frame(5.0 if i < enemy_alive else 0.0))
 		maxes.append(10.0)
 	return {"winner": winner, "frames": [[a, b]], "max_a": PackedFloat32Array([10.0]), "max_b": maxes}
 

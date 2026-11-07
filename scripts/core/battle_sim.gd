@@ -32,8 +32,9 @@ const KITE_DISTANCE := 1.8
 const RETARGET_MARGIN := 1.0
 const CHAIN_RANGE := 3.5
 
-## frames 의 유닛 하나당 숫자 개수: x, z, hp
-const STRIDE := 3
+## frames 의 유닛 하나당 숫자: x, z, hp, cd(다음 공격까지), spd(현재 공속), shield, heal_t, fire_t
+const STRIDE := 8
+const FRAME_KEYS := ["x", "z", "hp", "cd", "spd", "shield", "heal_t", "fire_t"]
 
 
 ## 유닛 하나 + 팀 보너스 → 전투 능력치. 유닛 기본 능력치에 가방 속 아이템을 더한다.
@@ -438,6 +439,11 @@ static func _snapshot(sides: Dictionary) -> Array:
 			arr.append(p.x)
 			arr.append(p.y)
 			arr.append(f["hp"])
+			arr.append(f["cd"])
+			arr.append(f["spd"])
+			arr.append(f["shield"])
+			arr.append(maxf(0.0, f["heal_timer"]))
+			arr.append(maxf(0.0, f["fire_timer"]))
 		out.append(arr)
 	return out
 
@@ -451,6 +457,15 @@ static func frame_pos(frame: Array, side: int, i: int) -> Vector2:
 static func frame_hp(frame: Array, side: int, i: int) -> float:
 	var arr: PackedFloat32Array = frame[side]
 	return arr[i * STRIDE + 2]
+
+
+## 한 유닛의 그 순간 상태 {x, z, hp, cd, spd, shield, heal_t, fire_t}
+static func frame_unit(frame: Array, side: int, i: int) -> Dictionary:
+	var arr: PackedFloat32Array = frame[side]
+	var out := {}
+	for k in FRAME_KEYS.size():
+		out[FRAME_KEYS[k]] = arr[i * STRIDE + k]
+	return out
 
 
 static func _hp_ratio(fighters: Array) -> float:
