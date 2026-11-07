@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if command -v godot >/dev/null; then have=$(godot --headless --version 2>/dev/null | grep -E '^[0-9]+\\.[0-9]+' | head -1); want=$(cat .godot-version 2>/dev/null); case \"$have\" in \"$want\"*) echo \"Godot $have\";; *) echo \"⚠ 설치된 Godot($have)이 .godot-version($want)과 다릅니다. 클라우드 환경 설정 스크립트의 GODOT_VER 를 맞추세요.\";; esac; else echo '⚠ godot 이 PATH 에 없습니다. 클라우드 환경 설정 스크립트에 Godot 설치를 넣으세요(README.md 참고). 그 전에는 tools/check.sh 를 돌릴 수 없습니다.'; fi; command -v xvfb-run >/dev/null || echo '· xvfb-run 없음: 스크린샷 확인 불가'; exit 0",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(tools/check.sh)",
+      "Bash(tools/screenshot.sh:*)",
+      "Bash(godot --headless:*)"
+    ]
+  }
+}

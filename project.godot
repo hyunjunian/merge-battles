@@ -1,0 +1,21 @@
+; Engine configuration file.
+; Godot 편집기에서 프로젝트 설정을 바꾸면 이 파일이 다시 쓰인다. 직접 고칠 때는 형식을 지킨다.
+
+config_version=5
+
+[application]
+
+config/name="Merge Battles"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

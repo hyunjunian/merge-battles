@@ -1,0 +1,10 @@
+# Godot 캐시 (임포트 결과, 편집기 상태) — 저장소에 넣지 않는다
+.godot/
+# 빌드·스크린샷 산출물
+/build/
+# 내보내기 설정에는 서명 키 경로 등이 들어갈 수 있다
+export_credentials.cfg
+*.translation
+# OS
+.DS_Store
+Thumbs.db

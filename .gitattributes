@@ -1,0 +1,7 @@
+# Godot 텍스트 리소스는 LF 로 통일 (Windows 편집기와 섞여도 diff 가 깨지지 않게)
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ogg binary
+*.wav binary
+*.ttf binary

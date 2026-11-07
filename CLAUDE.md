@@ -1,0 +1,30 @@
+# Merge Battles
+
+Godot 4.7.2.stable · GDScript 게임 프로젝트. Claude Code 클라우드 세션(claude.ai/code)에서 개발한다.
+
+## 환경
+- `godot`은 클라우드 환경의 **설정 스크립트**가 세션마다 `/usr/local/bin/godot`에 설치한다. 버전은 `.godot-version`과 같아야 한다(세션 시작 훅이 다르면 경고).
+- 컨테이너는 임시다. **작업 단위가 끝날 때마다 커밋하고 push한다.** push하지 않은 작업은 세션이 끝나면 사라진다.
+- 편집기 GUI는 없다. 장면(`.tscn`)과 리소스(`.tres`)는 텍스트로 직접 쓰고, 결과는 테스트와 스크린샷으로 확인한다.
+- 렌더러는 GL Compatibility(클라우드의 소프트웨어 OpenGL과 웹 내보내기에서 동작). Forward+로 바꾸면 클라우드에서 스크린샷이 안 될 수 있다.
+
+## 구조
+| 경로 | 내용 |
+|---|---|
+| `project.godot` | 프로젝트 설정. 메인 장면 `res://scenes/main.tscn` |
+| `scenes/` | 장면(`.tscn`) |
+| `scripts/` | GDScript |
+| `assets/` | 그림·소리·글꼴 |
+| `tests/` | `test_*.gd` 테스트(애드온 없는 자체 실행기 `run_tests.gd`) |
+| `tools/check.sh` | 임포트 → 문법 검사 → 테스트 |
+| `tools/screenshot.sh` | 장면을 실행해 `build/screenshots/<장면>.png` 저장 (xvfb 필요) |
+
+## 규칙
+1. **커밋 전 `tools/check.sh`가 통과해야 한다.** 실패하면 고친 뒤 커밋한다.
+2. 화면이 바뀌는 작업은 `tools/screenshot.sh [res://scenes/x.tscn]`로 찍고, PNG를 직접 열어 확인한 뒤 사용자에게 보여 준다. xvfb가 없으면 그 사실을 알린다.
+3. 로직은 테스트할 수 있게 작은 함수·클래스로 나누고, 새 기능에는 `tests/test_<기능>.gd`를 추가한다(`extends "res://tests/test_case.gd"`, `test_` 메서드, `check`/`check_eq`).
+4. GDScript는 정적 타입을 쓴다(`var speed: float = 200.0`, `func move(dir: Vector2) -> void`). 들여쓰기는 탭.
+5. `.tscn`을 손으로 쓸 때: `[gd_scene ... format=3]` 머리글, `ext_resource`의 `id`는 파일 안에서 유일하게, 노드의 `parent` 경로를 정확히. 쓴 뒤 `tools/check.sh`로 불러와지는지 확인한다.
+6. Godot이 만드는 `*.uid` 파일(스크립트 옆)은 커밋한다. `.godot/`와 `build/`는 커밋하지 않는다(`.gitignore`).
+7. Godot 버전을 올릴 때는 설정 스크립트의 `GODOT_VER`, `.godot-version`, `project.godot`의 `config/features`를 함께 바꾸고 `tools/check.sh`를 돌린다.
+8. 외부 애드온(Asset Library·GitHub)은 사용자와 상의한 뒤 `addons/`에 넣는다. 클라우드 세션은 GitHub 다운로드가 막혀 있을 수 있다.
