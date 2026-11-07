@@ -1,6 +1,6 @@
 extends Control
 ## 메인 장면. 3D 전장이 화면 전체에 깔려 있고, 그 위에 UI 가 자리마다 겹쳐 있다.
-##   위: HUD (라운드 배지·체력 바·골드·연승/연패·최고 기록·시너지)
+##   위: HUD (라운드·연승/연패·상대 시너지)
 ##   아래: 시트. 기본은 상점. 전장의 우리 유닛을 누르면 그 유닛 정보(가방 편성), 적을 누르면 정찰.
 ##         접을 수 있고, 열리면 전장 카메라가 위쪽으로 물러난다.
 ##   맨 아래: 행동 버튼. 가운데: 전투 결과·게임 오버 배너.
@@ -282,10 +282,6 @@ func _build_header() -> void:
 	var st := streak_text(state.streak)
 	if st != "":
 		row.add_child(_badge("flame" if state.streak > 0 else "skull", st, Color(1.0, 0.6, 0.2) if state.streak > 0 else S.MUTED))
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(spacer)
-	row.add_child(_badge("flag", "최고 %d" % records.get("best_round", 0), S.MUTED, 16))
 	header.add_child(row)
 	# 위: 상대 팀 시너지, 아래(시트 위): 우리 팀 시너지
 	var chips := HFlowContainer.new()
