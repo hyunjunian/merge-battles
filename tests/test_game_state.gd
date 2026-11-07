@@ -279,3 +279,16 @@ func test_fits_in() -> void:
 	gs.equip(sword, 0, Vector2i(0, 0))
 	check(gs.fits_in(sword, 0), "이미 든 아이템은 들어간 것으로 봄")
 	check(not gs.fits_in(Item.new("apple"), 0), "꽉 차면 안 들어감")
+
+
+func test_interest_per_ten_gold() -> void:
+	check_eq(GameState.interest_for(9), 0)
+	check_eq(GameState.interest_for(10), 1)
+	check_eq(GameState.interest_for(27), 2)
+	check_eq(GameState.interest_for(-3), 0)
+	var gs := GameState.new(3)
+	gs.gold = 23
+	var s := gs.apply_outcome(true, 0)
+	check_eq(s["interest"], 2, "전투 끝에 가진 23원 → 이자 2원")
+	check_eq(s["income"], GameState.income_for(s["streak"]) + 2, "수입에 이자 포함")
+	check_eq(gs.gold, 23 + s["income"])

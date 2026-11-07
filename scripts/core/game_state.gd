@@ -21,6 +21,7 @@ const SHOP_SIZE := 5
 const UNIT_CHANCE := 0.4
 const REROLL_COST := 1
 const ENEMY_REROLL_COST := 1
+const INTEREST_PER := 10
 
 var hp: int = START_HP
 var gold: int = START_GOLD
@@ -54,6 +55,11 @@ static func streak_bonus(streak_value: int) -> int:
 
 static func income_for(streak_value: int) -> int:
 	return BASE_INCOME + streak_bonus(streak_value)
+
+
+## 이자: 전투가 끝났을 때 가진 돈 10원마다 1원
+static func interest_for(gold_value: int) -> int:
+	return maxi(0, gold_value) / INTEREST_PER
 
 
 static func hp_loss_for(surviving_enemies: int) -> int:
@@ -372,17 +378,20 @@ func apply_outcome(won: bool, survivors: int) -> Dictionary:
 		streak = streak - 1 if streak < 0 else -1
 	var summary := {
 		"won": won, "hp_loss": loss, "survivors": survivors, "streak": streak,
-		"round_played": played, "income": 0, "bonus": 0, "game_over": false, "victory": false,
+		"round_played": played, "income": 0, "bonus": 0, "interest": 0, "game_over": false, "victory": false,
 	}
 	if hp <= 0:
 		hp = 0
 		game_over = true
 		summary["game_over"] = true
 		return summary
-	var income := income_for(streak)
+	# 수입 = 기본 + 연승/연패 보너스 + 이자(전투 끝에 가진 돈 기준)
+	var interest := interest_for(gold)
+	var income := income_for(streak) + interest
 	gold += income
 	summary["income"] = income
 	summary["bonus"] = streak_bonus(streak)
+	summary["interest"] = interest
 	round_no += 1
 	refill_shop()
 	# 출전 풀에 다음 라운드 상대가 없으면 우승

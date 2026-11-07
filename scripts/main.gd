@@ -642,8 +642,13 @@ func _add_result_panel() -> void:
 	if not won:
 		box.add_child(_line_icon("heart", "체력 -%d  (살아남은 적 %d)" % [summary["hp_loss"], summary["survivors"]], S.RED))
 	var income_text := "+%d원" % summary["income"]
+	var parts: PackedStringArray = ["기본 %d" % GameState.BASE_INCOME]
 	if summary["bonus"] > 0:
-		income_text += "  (기본 %d + %s %d)" % [GameState.BASE_INCOME, streak_text(summary["streak"]), summary["bonus"]]
+		parts.append("%s %d" % [streak_text(summary["streak"]), summary["bonus"]])
+	if int(summary.get("interest", 0)) > 0:
+		parts.append("이자 %d" % summary["interest"])
+	if parts.size() > 1:
+		income_text += "  (%s)" % " + ".join(parts)
 	box.add_child(_line_icon("coin", income_text, S.GOLD))
 	popup.add_child(panel)
 	action_bar.add_child(_action_button("다음 라운드 %d" % state.round_no, _on_continue, "PrimaryButton", "flag"))
@@ -985,6 +990,7 @@ func _setup_demo(kind: String) -> void:
 				_on_info_cell(inspect_unit, pack.placements[0]["pos"], pack)
 		return
 	elif kind == "result":
+		state.gold = maxi(state.gold, 12)  # 이자도 보이게
 		last_result = state.fight()
 		summary = state.apply_result(last_result)
 	elif kind == "victory":
