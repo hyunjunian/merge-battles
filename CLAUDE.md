@@ -15,11 +15,11 @@ Godot 4.7.2.stable · GDScript 게임 프로젝트. Claude Code 클라우드 세
 | `scenes/` | 장면(`.tscn`) |
 | `scripts/` | GDScript |
 | `scripts/core/` | 게임 규칙 (UI 없음, 테스트 대상): 유닛·아이템 정의, 가격·상점 확률, 가방, 시너지, 전투, 적 생성, 게임 상태(로그라이크), 기록 |
-| `scripts/ui/` | 그리기 전용 (가방 그리드, 3D 전투 재생 `battle_view_3d.gd`). 전투 결과는 `BattleSim` 이 미리 계산하고 화면은 재생만 한다 |
+| `scripts/ui/` | 그리기 전용: 3D 전투 재생 `battle_view_3d.gd`, 가방 그리드, 스타일 `ui_style.gd`(색·테마·버튼 변형·등급 색), 도형 아이콘 `game_icon.gd`, 칸 모양 미리보기 `shape_icon.gd`. 전투 결과는 `BattleSim` 이 미리 계산하고 화면은 재생만 한다 |
 | `assets/` | 그림·소리·글꼴. 한글 글꼴은 `assets/theme.tres`(메인 장면 theme)로 적용 |
 | `tests/` | `test_*.gd` 테스트(애드온 없는 자체 실행기 `run_tests.gd`) |
 | `tools/check.sh` | 임포트 → 문법 검사 → 테스트 |
-| `tools/screenshot.sh` | 장면을 실행해 `build/screenshots/<장면>.png` 저장 (xvfb 필요). 추가 인자 `demo=start\|shop\|enemy\|battle\|result\|gameover` 로 데모 화면, `t=<초>` 로 전투 시점 |
+| `tools/screenshot.sh` | 장면을 실행해 `build/screenshots/<장면>.png` 저장 (xvfb 필요). 추가 인자 `demo=start\|shop\|units\|enemy\|battle\|result\|gameover` 로 데모 화면, `t=<초>` 로 전투 시점 |
 
 ## 규칙
 1. **커밋 전 `tools/check.sh`가 통과해야 한다.** 실패하면 고친 뒤 커밋한다.
@@ -32,3 +32,4 @@ Godot 4.7.2.stable · GDScript 게임 프로젝트. Claude Code 클라우드 세
 8. 외부 애드온(Asset Library·GitHub)은 사용자와 상의한 뒤 `addons/`에 넣는다. 클라우드 세션은 GitHub 다운로드가 막혀 있을 수 있다.
 9. 화면은 세로 720×1280. 3D 전장(`BattleView3D`, 장면에 고정)이 전체 화면에 깔리고 UI 는 그 위에 겹친다(`Hud`, `Sheet`, `Popup`, `ActionBar`). 전장은 미리보기/재생과 카메라 구도(`set_compact`)만 바꾼다. UI 빈 곳의 탭이 전장으로 가도록 컨테이너는 `mouse_filter = IGNORE`. 나머지 UI 는 `scripts/main.gd` 가 코드로 만든다. 규칙은 `scripts/core/` 에 두고 UI 에서 직접 계산하지 않는다.
 10. 글꼴을 프로젝트 설정(`gui/theme/custom_font`)으로 지정하지 않는다. 새 클론의 첫 임포트 때 로드 오류가 난다. 장면의 theme 로 적용한다.
+11. UI 색·버튼은 `UiStyle` 을 쓴다(새 색을 흩어 놓지 않는다). 버튼 종류는 `theme_type_variation` 으로: PrimaryButton(금색), GoButton(초록), DangerButton(빨강), TabButton/TabButtonOn. 아이콘은 이미지 대신 `GameIcon.make("heart" …)`.

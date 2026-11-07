@@ -132,7 +132,7 @@ func test_ui_helpers() -> void:
 	check_eq(Main.streak_text(-2), "2연패")
 	check_eq(Main.streak_text(1), "")
 	var big := Backpack.new("warlord")
-	check(Main.cell_size_for(big) * big.height <= 224.0 + 0.01, "큰 가방도 시트에 들어감")
+	check(Main.cell_size_for(big) * big.height <= 232.0 + 0.01, "큰 가방도 시트에 들어감")
 	var packs: Array[Backpack] = [Backpack.new("archer")]
 	packs[0].slot = 4
 	var r := Main.roster(packs, "a")

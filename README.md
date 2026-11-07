@@ -31,6 +31,7 @@ Godot 4.7.2.stable · GDScript · 세로 화면(720×1280) 프로토타입
 | `scripts/core/enemy_gen.gd` | 라운드별 상대 팀 생성 |
 | `scripts/core/game_state.gd` | 체력·골드·라운드·연승/연패·상점·판매·게임 오버 |
 | `scripts/ui/backpack_view.gd` | 가방 그리드 그리기·터치 |
+| `scripts/ui/ui_style.gd`, `game_icon.gd`, `shape_icon.gd` | UI 스타일(색·버튼·등급), 도형 아이콘, 칸 모양 미리보기 |
 | `scripts/ui/battle_view_3d.gd` | 전투 기록을 3D 전장에서 재생 (체력바·피해 숫자는 2D 오버레이) |
 | `scripts/main.gd` | 화면 구성과 입력 처리 |
 | `assets/fonts/` | Noto Sans KR (SIL OFL, `OFL.txt`) |
@@ -60,7 +61,7 @@ apt-get update -qq && apt-get install -y -qq xvfb mesa-utils libgl1-mesa-dri
 tools/check.sh                              # 임포트 → 문법 → 테스트
 tools/screenshot.sh                         # 메인 장면 스크린샷 → build/screenshots/main.png
 tools/screenshot.sh res://scenes/x.tscn 60  # 다른 장면, 60프레임 뒤
-tools/screenshot.sh "" 30 demo=shop         # 데모 화면: demo=start | shop | enemy | battle (t=초) | result | gameover
+tools/screenshot.sh "" 30 demo=shop         # 데모 화면: demo=start | shop | units | enemy | battle (t=초) | result | gameover
 ```
 
 ## 웹 배포 (GitHub Pages)

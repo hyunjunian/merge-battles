@@ -42,32 +42,45 @@ func _gui_input(event: InputEvent) -> void:
 func _draw() -> void:
 	if pack == null:
 		return
-	var font := get_theme_default_font()
-	var gap := 2.0
+	var font := UiStyle.bold()
+	var gap := 2.5
+	var frame := Rect2(Vector2.ZERO, Vector2(pack.width, pack.height) * cell_size).grow(3.0)
+	draw_style_box(UiStyle.box(Color(0.03, 0.04, 0.07), Color(0.35, 0.28, 0.16), 2, 8, -1, 0.0), frame)
 	for y in pack.height:
 		for x in pack.width:
 			var r := Rect2(Vector2(x, y) * cell_size, Vector2.ONE * cell_size).grow(-gap)
-			draw_rect(r, Color(0.16, 0.14, 0.12))
-			draw_rect(r, Color(0.35, 0.30, 0.24), false, 1.0)
+			draw_style_box(UiStyle.box(Color(0.13, 0.11, 0.09), Color(0.30, 0.25, 0.18), 1, 5, -1, 0.0), r)
 	for p in pack.placements:
 		var item: Item = p["item"]
 		var pos: Vector2i = p["pos"]
 		var col := item.color()
-		for c in item.cells():
+		var cells := item.cells()
+		for c in cells:
 			var r := Rect2(Vector2(pos + c) * cell_size, Vector2.ONE * cell_size).grow(-gap)
 			draw_rect(r, col)
 			# 같은 아이템 칸끼리 이어 보이게 틈을 메운다
-			if item.cells().has(c + Vector2i.RIGHT):
+			if cells.has(c + Vector2i.RIGHT):
 				draw_rect(Rect2(r.position + Vector2(r.size.x, 0), Vector2(gap * 2, r.size.y)), col)
-			if item.cells().has(c + Vector2i.DOWN):
+			if cells.has(c + Vector2i.DOWN):
 				draw_rect(Rect2(r.position + Vector2(0, r.size.y), Vector2(r.size.x, gap * 2)), col)
-			if item.cells().has(c + Vector2i.ONE) and item.cells().has(c + Vector2i.RIGHT) and item.cells().has(c + Vector2i.DOWN):
+			if cells.has(c + Vector2i.ONE) and cells.has(c + Vector2i.RIGHT) and cells.has(c + Vector2i.DOWN):
 				draw_rect(Rect2(r.position + r.size, Vector2.ONE * gap * 2), col)
-		if item == selected:
-			for c in item.cells():
-				var r := Rect2(Vector2(pos + c) * cell_size, Vector2.ONE * cell_size).grow(-gap)
-				draw_rect(r, Color.WHITE, false, 3.0)
-		var origin := Vector2(pos) * cell_size + Vector2(gap + 3, gap + 2)
-		var fs := int(cell_size * 0.30)
-		var short_name: String = String(item.def().get("name", "?")).substr(0, 2)
-		draw_string(font, origin + Vector2(0, fs), short_name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
+		# 아이템 외곽선과 윗면 광택
+		var bounds := Rect2(Vector2(pos) * cell_size, Vector2(item.size()) * cell_size).grow(-gap)
+		draw_rect(Rect2(bounds.position, Vector2(bounds.size.x, minf(8.0, bounds.size.y * 0.15))), Color(1, 1, 1, 0.18))
+		var border := Color.WHITE if item == selected else col.darkened(0.5)
+		for c in cells:
+			var r := Rect2(Vector2(pos + c) * cell_size, Vector2.ONE * cell_size).grow(-gap)
+			if not cells.has(c + Vector2i.UP):
+				draw_line(r.position, r.position + Vector2(r.size.x, 0), border, 2.5 if item == selected else 2.0)
+			if not cells.has(c + Vector2i.DOWN):
+				draw_line(r.position + Vector2(0, r.size.y), r.end, border, 2.5 if item == selected else 2.0)
+			if not cells.has(c + Vector2i.LEFT):
+				draw_line(r.position, r.position + Vector2(0, r.size.y), border, 2.5 if item == selected else 2.0)
+			if not cells.has(c + Vector2i.RIGHT):
+				draw_line(r.position + Vector2(r.size.x, 0), r.end, border, 2.5 if item == selected else 2.0)
+		var fs := int(cell_size * 0.28)
+		var origin := Vector2(pos) * cell_size + Vector2(gap + 4, gap + 4 + fs)
+		var short_name: String = item.display_name().substr(0, 2)
+		draw_string_outline(font, origin, short_name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 4, Color(0, 0, 0, 0.7))
+		draw_string(font, origin, short_name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
