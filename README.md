@@ -56,6 +56,14 @@ tools/screenshot.sh res://scenes/x.tscn 60  # 다른 장면, 60프레임 뒤
 tools/screenshot.sh "" 30 demo=camp         # 데모 화면: demo=camp | demo=prep | demo=battle
 ```
 
+## 웹 배포 (GitHub Pages)
+
+`main`에 push하면 `.github/workflows/pages.yml`이 점검(`tools/check.sh`) → 웹 빌드(`tools/export_web.sh`) → GitHub Pages 배포를 한다.
+처음 한 번 저장소 **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 바꿔야 한다.
+주소: `https://<사용자>.github.io/merge-battles/`
+
+로컬 웹 빌드: `tools/export_web.sh` → `build/web/` (Godot 웹 export 템플릿 필요). GitHub Pages는 COOP/COEP 헤더를 못 주므로 스레드 없는 빌드를 쓴다.
+
 ## 내 컴퓨터에서 열기
 
 Godot 4.7.2.stable(표준판)으로 `project.godot`을 엽니다.
