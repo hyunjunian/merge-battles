@@ -355,11 +355,13 @@ func _refresh_highlight() -> void:
 
 
 ## 능력치 칩 줄
-func _stat_row(s: Dictionary, font_size: int = 16) -> Control:
+func _stat_row(s: Dictionary, font_size: int = 16, with_hp: bool = true) -> Control:
 	var flow := HFlowContainer.new()
 	flow.add_theme_constant_override("h_separation", 12)
 	flow.add_theme_constant_override("v_separation", 4)
 	for e: Array in STAT_ICONS:
+		if e[1] == "hp" and not with_hp:
+			continue
 		var v: float = s.get(e[1], 0.0)
 		if v == 0.0 and e[1] in ["armor", "regen"]:
 			continue
@@ -398,12 +400,11 @@ func _detail_grid(left_w: float, name_box: Control, info_box: Control, bag_box: 
 	return grid
 
 
-## 이름 칸: 이름, 가방 크기·가치, (편성 중) 모두 빼기·판매
+## 이름 칸: 이름, (편성 중) 모두 빼기·판매
 func _name_box(pack: Backpack, color: Color, with_actions: bool) -> Control:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
 	v.add_child(_label(pack.display_name(), 26, color, false, true))
-	v.add_child(_label("%dx%d 가방 · 가치 %d원" % [pack.width, pack.height, pack.total_value()], 14, S.MUTED))
 	if with_actions:
 		var strip := _button("모두 빼기", _on_unequip_all)
 		strip.disabled = pack.is_empty()
@@ -416,13 +417,13 @@ func _name_box(pack: Backpack, color: Color, with_actions: bool) -> Control:
 	return v
 
 
-## 정보 칸: 능력치, 체력·쿨타임 막대, 초당 피해, 스킬
+## 정보 칸: 위에서부터 체력 막대, 공격 쿨타임 막대(+스킬 쿨타임), 나머지 능력치(체력 제외), 초당 피해, 스킬
 func _info_box(pack: Backpack, s: Dictionary, side: String, idx: int) -> Control:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	v.add_child(_stat_row(s))
 	v.add_child(LiveStats.make(_live_source.bind(side, idx, s)))
+	v.add_child(_stat_row(s, 16, false))
 	v.add_child(_label("초당 피해 %.1f" % dps(s), 14, S.MUTED))
 	_add_skill_lines(v, pack)
 	return v
