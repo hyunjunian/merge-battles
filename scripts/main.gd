@@ -282,6 +282,14 @@ func _build_header() -> void:
 	var st := streak_text(state.streak)
 	if st != "":
 		row.add_child(_badge("flame" if state.streak > 0 else "skull", st, Color(1.0, 0.6, 0.2) if state.streak > 0 else S.MUTED))
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(spacer)
+	# 오른쪽 위: 전투 전에 이번 라운드 상대를 같은 라운드의 다른 출전으로 바꾼다
+	var change := _button("상대 바꾸기 %d원" % state.enemy_reroll_cost(), _on_reroll_enemy)
+	change.disabled = battling or not summary.is_empty() or not state.can_reroll_enemy()
+	change.custom_minimum_size = Vector2(0, 40)
+	row.add_child(change)
 	header.add_child(row)
 	# 위: 상대 팀 시너지, 아래(시트 위): 우리 팀 시너지
 	var chips := HFlowContainer.new()
@@ -640,11 +648,6 @@ func _add_enemy_detail() -> void:
 	lv.add_child(flow)
 	var left_w := maxf(200.0, pack.width * cell + 24.0)
 	var name_box := _name_box(pack, S.RED.lightened(0.3), false)
-	# 전투 전: 1원으로 이번 라운드 상대를 다른 출전으로 바꾼다
-	var change := _button("상대 바꾸기 %d원" % state.enemy_reroll_cost(), _on_reroll_enemy)
-	change.disabled = battling or not state.can_reroll_enemy()
-	change.custom_minimum_size = Vector2(0, 42)
-	name_box.add_child(change)
 	content.add_child(_detail_grid(left_w, name_box, _info_box(pack, s, "b", inspect_enemy), _bag_box(view), lv, Color(S.RED, 0.6)))
 	_add_item_info(pack)
 	var syn: PackedStringArray = []
@@ -948,10 +951,11 @@ func _on_reroll() -> void:
 
 
 func _on_reroll_enemy() -> void:
-	if battling or not state.reroll_enemy():
+	if battling or not summary.is_empty() or not state.reroll_enemy():
 		return
-	# 새 상대 팀의 첫 유닛을 정찰한다
-	inspect_enemy = 0
+	# 정찰 중이었으면 새 상대 팀의 첫 유닛을 보여 준다
+	if inspect_enemy >= 0:
+		inspect_enemy = 0
 	info_item = null
 	refresh()
 

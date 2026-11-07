@@ -358,6 +358,16 @@ func test_reroll_enemy_from_scouting() -> void:
 	check_eq(state.gold, gold - state.enemy_reroll_cost(), "정찰 패널에서 1원으로 상대 바꾸기")
 	check_eq(state.enemy_reroll_count(), count + 1)
 	check_eq(main.inspect_enemy, 0, "새 상대 첫 유닛 정찰")
+	var in_hud := false
+	for b in main.header.find_children("*", "Button", true, false):
+		if (b as Button).text.begins_with("상대 바꾸기"):
+			in_hud = true
+	check(in_hud, "상대 바꾸기 버튼은 위 HUD 에")
+	var in_panel := false
+	for b in main.content.find_children("*", "Button", true, false):
+		if (b as Button).text.begins_with("상대 바꾸기"):
+			in_panel = true
+	check(not in_panel, "정찰 패널에는 없음")
 	free_later(main)
 
 
