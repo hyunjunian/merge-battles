@@ -8,6 +8,8 @@ extends RefCounted
 ##   armor  방어력 (받는 피해에서 뺀다)
 ##   spd    초당 공격 횟수 보너스
 ##   regen  초당 체력 회복
+## 선택 필드
+##   range  공격 사거리. 가방에 하나라도 있으면 그 유닛은 원거리 유닛이 된다 (가장 긴 값).
 
 const MAX_TIER := 3
 
@@ -29,6 +31,12 @@ const DEFS: Dictionary = {
 		"shape": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)],
 		"stats": {"atk": 9.0, "hp": 10.0},
 		"color": Color(0.70, 0.22, 0.22),
+	},
+	"short_bow": {
+		"name": "단궁", "cost": 3, "tag": "warrior", "range": 4.5,
+		"shape": [Vector2i(0, 0), Vector2i(0, 1)],
+		"stats": {"atk": 3.0, "spd": 0.1},
+		"color": Color(0.78, 0.56, 0.30),
 	},
 	"buckler": {
 		"name": "버클러", "cost": 2, "tag": "guard",
@@ -61,7 +69,7 @@ const DEFS: Dictionary = {
 		"color": Color(0.30, 0.60, 0.30),
 	},
 	"fire_staff": {
-		"name": "화염지팡이", "cost": 4, "tag": "arcane",
+		"name": "화염지팡이", "cost": 4, "tag": "arcane", "range": 4.0,
 		"shape": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2)],
 		"stats": {"atk": 6.0, "spd": 0.1},
 		"color": Color(0.66, 0.40, 0.82),

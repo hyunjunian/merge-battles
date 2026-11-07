@@ -11,7 +11,7 @@ const ACCENT := Color(0.95, 0.75, 0.30)
 var state: GameState
 var selected: Item = null
 var message: String = ""
-var battle_view: BattleView = null
+var battle_view: BattleView3D = null
 var last_result: Dictionary = {}
 
 ## 화면 제목 (테스트에서 확인한다)
@@ -229,9 +229,9 @@ func _show_battle(result: Dictionary, start_time: float = 0.0) -> void:
 	_clear()
 	title.text = "Merge Battles · 라운드 %d 전투" % state.round_no
 	last_result = result
-	battle_view = BattleView.new()
+	battle_view = BattleView3D.new()
 	battle_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	battle_view.custom_minimum_size = Vector2(0, 900)
+	battle_view.custom_minimum_size = Vector2(0, 1060)
 	content.add_child(battle_view)
 	var colors_a: Array[Color] = []
 	for u in state.units:
@@ -374,18 +374,25 @@ func _demo_arg() -> String:
 
 func _setup_demo(kind: String) -> void:
 	state = GameState.new(7)
-	state.inventory.append_array([Item.new("sword"), Item.new("helmet"), Item.new("mana_orb")])
-	var plan := [[0, Vector2i(0, 0)], [1, Vector2i(0, 0)], [2, Vector2i(0, 0)]]
-	for i in plan.size():
-		var item := state.inventory[0]
-		state.equip(item, plan[i][0], plan[i][1])
-	selected = state.inventory[0] if not state.inventory.is_empty() else null
+	state.round_no = 3
+	state.inventory.clear()
+	# 유닛 1: 장검+버클러(근접), 유닛 2: 투구+사과(탱커), 유닛 3: 단궁(원거리)
+	var plan := [[0, "sword"], [0, "buckler"], [1, "helmet"], [1, "apple"], [2, "short_bow"]]
+	for p: Array in plan:
+		var item := Item.new(p[1])
+		state.inventory.append(item)
+		state.equip(item, p[0], state.units[p[0]].find_spot(item))
+	state.inventory.append_array([Item.new("sword"), Item.new("mana_orb")])
+	selected = state.inventory[0]
 	if kind == "prep" or kind == "battle":
-		state.round_no = 3
 		state.start_expedition()
 		selected = null
 	if kind == "battle":
-		_show_battle(state.fight(), 3.0)
+		var at := 3.0
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("t="):
+				at = a.substr(2).to_float()
+		_show_battle(state.fight(), at)
 
 
 # ── 위젯 도우미 ───────────────────────────────────────

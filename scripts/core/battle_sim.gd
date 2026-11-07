@@ -1,30 +1,48 @@
 class_name BattleSim
 extends RefCounted
-## 자동 전투 시뮬레이션. 결과를 한 번에 계산하고, 화면은 그 기록(frames, events)을 재생만 한다.
+## 전장 자동 전투 시뮬레이션. 결과를 한 번에 계산하고, 화면은 그 기록(frames, events)을 재생만 한다.
 ## 같은 입력이면 항상 같은 결과가 나온다(무작위 없음).
 ##
-## 규칙
-## - 각 유닛은 (1 / 공속)초마다 상대 팀의 맨 앞(살아 있는 가장 작은 번호) 유닛을 때린다.
-## - 피해 = max(1, 공격력 - 상대 방어력)
-## - 매 틱마다 회복량만큼 체력이 찬다(최대 체력까지).
-## - 한쪽이 전멸하면 끝. 제한 시간이 지나면 남은 체력 비율이 높은 쪽이 이긴다.
+## 전장: x ∈ [-HALF_W, HALF_W], z ∈ [-HALF_D, HALF_D] 의 평면. 우리 팀(a)은 +z 쪽, 상대(b)는 -z 쪽에서 시작한다.
+##
+## 유닛 AI (틱마다)
+## 1. 목표 고르기: 가장 가까운 적. 지금 목표보다 RETARGET_MARGIN 이상 가까운 적이 생기면 바꾼다.
+## 2. 원거리 유닛(사거리 > MELEE_RANGE)은 적이 KITE_DISTANCE 안으로 붙으면 뒤로 물러난다.
+## 3. 사거리 밖이면 목표 쪽으로 이동, 안이면 멈춰서 공격.
+## 4. 공격: (1 / 공속)초마다. 피해 = max(1, 공격력 - 상대 방어력).
+## 5. 유닛끼리 겹치면 서로 밀어낸다. 전장 밖으로는 못 나간다.
+## 한쪽이 전멸하면 끝. 제한 시간이 지나면 남은 체력 비율이 높은 쪽이 이긴다.
 
 const DT := 0.1
 const MAX_TIME := 60.0
+
+const HALF_W := 4.0
+const HALF_D := 7.0
+const START_Z := 4.0
+const SPACING := 2.2
+const RADIUS := 0.45
 
 const BASE_HP := 40.0
 const BASE_ATK := 1.0
 const BASE_SPD := 0.8
 const MIN_SPD := 0.2
+const BASE_MOVE := 2.0
+const MELEE_RANGE := 0.6
+const KITE_DISTANCE := 1.8
+const RETARGET_MARGIN := 1.0
+
+## frames 의 유닛 하나당 숫자 개수: x, z, hp
+const STRIDE := 3
 
 
 ## 가방 하나 + 팀 보너스 → 전투 능력치.
 static func unit_stats(pack: Backpack, bonus: Dictionary = {}) -> Dictionary:
-	var s := {"hp": BASE_HP, "atk": BASE_ATK, "armor": 0.0, "spd": BASE_SPD, "regen": 0.0}
+	var s := {"hp": BASE_HP, "atk": BASE_ATK, "armor": 0.0, "spd": BASE_SPD, "regen": 0.0, "range": MELEE_RANGE, "move": BASE_MOVE}
 	for item in pack.items():
 		var st := item.stats()
 		for k: String in st.keys():
 			s[k] = float(s.get(k, 0.0)) + float(st[k])
+		s["range"] = maxf(s["range"], float(item.def().get("range", MELEE_RANGE)))
 	s["atk"] *= 1.0 + float(bonus.get("atk_mult", 0.0))
 	s["spd"] = maxf(MIN_SPD, s["spd"] * (1.0 + float(bonus.get("spd_mult", 0.0))))
 	s["armor"] += float(bonus.get("armor", 0.0))
@@ -49,14 +67,25 @@ static func damage(atk: float, armor: float) -> float:
 	return maxf(1.0, atk - armor)
 
 
+static func is_ranged(stats: Dictionary) -> bool:
+	return float(stats.get("range", MELEE_RANGE)) > MELEE_RANGE + 0.01
+
+
+## 시작 위치: 팀마다 한 줄로 가운데 정렬.
+static func start_position(side: String, index: int, count: int) -> Vector2:
+	var x := (index - (count - 1) / 2.0) * SPACING
+	return Vector2(x, START_Z if side == "a" else -START_Z)
+
+
 ## 반환값
 ##   winner:   "a" | "b"
 ##   duration: 끝난 시각(초)
-##   frames:   틱마다 [팀 a 체력 배열, 팀 b 체력 배열]  (frames[0] 은 시작 상태)
-##   events:   [{t, side, src, dst, dmg}]  side 는 때린 쪽 ("a" | "b")
+##   frames:   틱마다 [팀 a 배열, 팀 b 배열]. 배열은 유닛마다 (x, z, hp). frames[0] 은 시작 상태.
+##   events:   [{t, side, src, dst, dmg, ranged}]  side 는 때린 쪽 ("a" | "b")
 ##   max_a, max_b: 최대 체력 배열
+##   ranged_a, ranged_b: 원거리 유닛 여부 배열
 static func simulate(team_a: Array[Dictionary], team_b: Array[Dictionary]) -> Dictionary:
-	var sides := {"a": _make_fighters(team_a), "b": _make_fighters(team_b)}
+	var sides := {"a": _make_fighters("a", team_a), "b": _make_fighters("b", team_b)}
 	var frames: Array = [_snapshot(sides)]
 	var events: Array[Dictionary] = []
 	var t := 0.0
@@ -66,24 +95,11 @@ static func simulate(team_a: Array[Dictionary], team_b: Array[Dictionary]) -> Di
 		for side: String in ["a", "b"]:
 			var foe_side := "b" if side == "a" else "a"
 			for i in sides[side].size():
-				var f: Dictionary = sides[side][i]
-				if f["hp"] <= 0.0:
-					continue
-				f["hp"] = minf(f["max_hp"], f["hp"] + f["regen"] * DT)
-				f["cd"] -= DT
-				if f["cd"] > 0.0001:
-					continue
-				var target := _front(sides[foe_side])
-				if target < 0:
-					break
-				var foe: Dictionary = sides[foe_side][target]
-				var dmg := damage(f["atk"], foe["armor"])
-				foe["hp"] = maxf(0.0, foe["hp"] - dmg)
-				f["cd"] += 1.0 / f["spd"]
-				events.append({"t": t, "side": side, "src": i, "dst": target, "dmg": dmg})
+				_step_fighter(sides[side][i], side, i, sides[foe_side], t, events)
+		_separate(sides)
 		frames.append(_snapshot(sides))
-		var a_alive := _front(sides["a"]) >= 0
-		var b_alive := _front(sides["b"]) >= 0
+		var a_alive := _alive_count(sides["a"]) > 0
+		var b_alive := _alive_count(sides["b"]) > 0
 		if not b_alive:
 			winner = "a"
 		elif not a_alive:
@@ -95,38 +111,142 @@ static func simulate(team_a: Array[Dictionary], team_b: Array[Dictionary]) -> Di
 		"duration": t,
 		"frames": frames,
 		"events": events,
-		"max_a": _max_hp(sides["a"]),
-		"max_b": _max_hp(sides["b"]),
+		"max_a": _column(sides["a"], "max_hp"),
+		"max_b": _column(sides["b"], "max_hp"),
+		"ranged_a": _ranged_flags(sides["a"]),
+		"ranged_b": _ranged_flags(sides["b"]),
 	}
 
 
-static func _make_fighters(team: Array[Dictionary]) -> Array:
+## 한 유닛의 한 틱: 회복 → 목표 선택 → 이동 → 공격.
+static func _step_fighter(f: Dictionary, side: String, i: int, foes: Array, t: float, events: Array[Dictionary]) -> void:
+	if f["hp"] <= 0.0:
+		return
+	f["hp"] = minf(f["max_hp"], f["hp"] + f["regen"] * DT)
+	f["cd"] = maxf(0.0, f["cd"] - DT)
+	var target := choose_target(f["pos"], int(f["target"]), foes)
+	f["target"] = target
+	if target < 0:
+		return
+	var foe: Dictionary = foes[target]
+	var pos: Vector2 = f["pos"]
+	var to_foe: Vector2 = foe["pos"] - pos
+	var dist := to_foe.length()
+	var reach: float = f["range"] + RADIUS * 2.0
+	var step: float = f["move"] * DT
+	var ranged: bool = f["range"] > MELEE_RANGE + 0.01
+	if ranged and dist < KITE_DISTANCE and f["cd"] > 0.0:
+		# 원거리: 쏠 준비가 안 됐을 때 적이 붙으면 물러난다. 벽에 막히면 옆으로 빠진다.
+		f["pos"] = kite_step(pos, foe["pos"], step * 0.8)
+	elif dist > reach:
+		f["pos"] = _clamp_field(pos + to_foe.normalized() * minf(step, dist - reach + 0.05))
+	elif f["cd"] <= 0.0001:
+		var dmg := damage(f["atk"], foe["armor"])
+		foe["hp"] = maxf(0.0, foe["hp"] - dmg)
+		f["cd"] = 1.0 / f["spd"]
+		events.append({"t": t, "side": side, "src": i, "dst": target, "dmg": dmg, "ranged": ranged})
+
+
+## 적에게서 멀어지는 한 걸음. 뒤가 막혀 거의 못 움직이면 전장 가운데 쪽 옆으로 비켜선다.
+static func kite_step(pos: Vector2, enemy: Vector2, step: float) -> Vector2:
+	var away := (pos - enemy).normalized() if pos.distance_to(enemy) > 0.0001 else Vector2(0, 1)
+	var back := _clamp_field(pos + away * step)
+	if back.distance_to(pos) >= step * 0.5:
+		return back
+	var side := Vector2(-away.y, away.x)
+	if side.dot(-pos) < 0.0:
+		side = -side
+	return _clamp_field(pos + side * step)
+
+
+## 가장 가까운 살아 있는 적. 지금 목표가 살아 있으면 RETARGET_MARGIN 이상 가까운 적이 있을 때만 바꾼다.
+static func choose_target(pos: Vector2, current: int, foes: Array) -> int:
+	var best := -1
+	var best_d := INF
+	for j in foes.size():
+		if foes[j]["hp"] <= 0.0:
+			continue
+		var d := pos.distance_to(foes[j]["pos"])
+		if d < best_d - 0.0001:
+			best = j
+			best_d = d
+	if current >= 0 and current < foes.size() and foes[current]["hp"] > 0.0:
+		var cur_d := pos.distance_to(foes[current]["pos"])
+		if cur_d <= best_d + RETARGET_MARGIN:
+			return current
+	return best
+
+
+## 살아 있는 유닛끼리 겹치면 반씩 밀어낸다 (양 팀 모두).
+static func _separate(sides: Dictionary) -> void:
+	var all: Array = []
+	for side: String in ["a", "b"]:
+		for f: Dictionary in sides[side]:
+			if f["hp"] > 0.0:
+				all.append(f)
+	for n in all.size():
+		for m in range(n + 1, all.size()):
+			var p: Vector2 = all[n]["pos"]
+			var q: Vector2 = all[m]["pos"]
+			var d := p.distance_to(q)
+			var min_d := RADIUS * 2.0
+			if d >= min_d:
+				continue
+			var dir := (p - q).normalized() if d > 0.0001 else Vector2(1, 0)
+			var push := (min_d - d) / 2.0
+			all[n]["pos"] = _clamp_field(p + dir * push)
+			all[m]["pos"] = _clamp_field(q - dir * push)
+
+
+static func _clamp_field(p: Vector2) -> Vector2:
+	return Vector2(clampf(p.x, -HALF_W, HALF_W), clampf(p.y, -HALF_D, HALF_D))
+
+
+static func _make_fighters(side: String, team: Array[Dictionary]) -> Array:
 	var out: Array = []
-	for s in team:
+	for i in team.size():
+		var s := team[i]
 		var spd: float = maxf(MIN_SPD, float(s["spd"]))
 		out.append({
 			"hp": float(s["hp"]), "max_hp": float(s["hp"]), "atk": float(s["atk"]),
 			"armor": float(s["armor"]), "spd": spd, "regen": float(s["regen"]),
-			"cd": 1.0 / spd,
+			"range": float(s.get("range", MELEE_RANGE)), "move": float(s.get("move", BASE_MOVE)),
+			"pos": start_position(side, i, team.size()), "target": -1,
+			"cd": 0.5 / spd,
 		})
 	return out
 
 
-static func _front(fighters: Array) -> int:
-	for i in fighters.size():
-		if fighters[i]["hp"] > 0.0:
-			return i
-	return -1
+static func _alive_count(fighters: Array) -> int:
+	var n := 0
+	for f: Dictionary in fighters:
+		if f["hp"] > 0.0:
+			n += 1
+	return n
 
 
 static func _snapshot(sides: Dictionary) -> Array:
-	var a := PackedFloat32Array()
-	var b := PackedFloat32Array()
-	for f: Dictionary in sides["a"]:
-		a.append(f["hp"])
-	for f: Dictionary in sides["b"]:
-		b.append(f["hp"])
-	return [a, b]
+	var out: Array = []
+	for side: String in ["a", "b"]:
+		var arr := PackedFloat32Array()
+		for f: Dictionary in sides[side]:
+			var p: Vector2 = f["pos"]
+			arr.append(p.x)
+			arr.append(p.y)
+			arr.append(f["hp"])
+		out.append(arr)
+	return out
+
+
+## 기록 읽기 도우미 (side: 0 = a, 1 = b)
+static func frame_pos(frame: Array, side: int, i: int) -> Vector2:
+	var arr: PackedFloat32Array = frame[side]
+	return Vector2(arr[i * STRIDE], arr[i * STRIDE + 1])
+
+
+static func frame_hp(frame: Array, side: int, i: int) -> float:
+	var arr: PackedFloat32Array = frame[side]
+	return arr[i * STRIDE + 2]
 
 
 static func _hp_ratio(fighters: Array) -> float:
@@ -138,8 +258,15 @@ static func _hp_ratio(fighters: Array) -> float:
 	return hp / mx if mx > 0.0 else 0.0
 
 
-static func _max_hp(fighters: Array) -> PackedFloat32Array:
+static func _column(fighters: Array, key: String) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	for f: Dictionary in fighters:
-		out.append(f["max_hp"])
+		out.append(f[key])
+	return out
+
+
+static func _ranged_flags(fighters: Array) -> Array[bool]:
+	var out: Array[bool] = []
+	for f: Dictionary in fighters:
+		out.append(f["range"] > MELEE_RANGE + 0.01)
 	return out

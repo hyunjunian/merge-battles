@@ -89,4 +89,6 @@ func describe() -> String:
 		if s.has(k):
 			var v: float = s[k]
 			parts.append("%s +%s" % [labels[k], ("%.2f" % v).rstrip("0").rstrip(".")])
+	if def().has("range"):
+		parts.append("사거리 %.1f (원거리)" % float(def()["range"]))
 	return ", ".join(parts)
