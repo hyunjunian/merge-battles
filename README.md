@@ -1,6 +1,32 @@
 # Merge Battles
 
-Godot 4.7.2.stable · GDScript
+Godot 4.7.2.stable · GDScript · 세로 화면(720×1280) 프로토타입
+
+가방 퍼즐 + 오토배틀러. 보유한 아이템을 유닛 가방(3×4 칸)에 넣어 유닛을 만들고, 라운드 예산 안에서 팀을 짜서 매 라운드 강해지는 상대와 자동으로 싸운다.
+
+## 게임 방식 (프로토타입)
+
+- **베이스 캠프**: 상점에서 아이템 구매·새로고침, 판매, 같은 아이템 2개 합성(★ 등급 상승), 유닛 편성. 준비가 되면 출정한다.
+- **유닛 = 가방**: 가방에 넣은 아이템 능력치(체력·공격·방어·공속·회복)가 곧 유닛의 능력치다. 빈 가방은 출전하지 않는다. 아이템마다 칸 모양이 있고 회전할 수 있다.
+- **예산**: 가방에 넣은 아이템 비용의 합은 라운드 예산(8 + 4×(라운드−1))을 넘을 수 없다. 합성하면 능력치 2배·비용 1.5배라서 예산을 아낀다.
+- **시너지**: 팀 전체에서 같은 태그(전사·수호·자연·비전) 아이템이 2개, 4개 모이면 팀 보너스.
+- **전투**: 자동. 각 유닛은 상대의 맨 앞 유닛을 때린다. 이기면 골드를 받고 다음 라운드(원하면 캠프로 귀환), 지면 베이스 캠프로 돌아와 정비한 뒤 같은 라운드에 다시 도전한다.
+
+## 코드 구조
+
+| 경로 | 내용 |
+|---|---|
+| `scripts/core/item_db.gd` | 아이템 정의 표 (모양·비용·능력치·태그) |
+| `scripts/core/item.gd` | 보유 아이템 (등급, 회전, 능력치·비용 계산) |
+| `scripts/core/backpack.gd` | 가방 칸 배치 |
+| `scripts/core/synergy.gd` | 태그 시너지 |
+| `scripts/core/battle_sim.gd` | 유닛 능력치 계산, 결정적 자동 전투 시뮬레이션 |
+| `scripts/core/enemy_gen.gd` | 라운드별 상대 팀 생성 |
+| `scripts/core/game_state.gd` | 골드·라운드·상점·합성·예산·진행 |
+| `scripts/ui/backpack_view.gd` | 가방 그리드 그리기·터치 |
+| `scripts/ui/battle_view.gd` | 전투 기록 재생 |
+| `scripts/main.gd` | 화면 구성과 입력 처리 |
+| `assets/fonts/` | Noto Sans KR (SIL OFL, `OFL.txt`) |
 
 ## 클라우드 세션에서 개발하기 (claude.ai/code)
 
@@ -27,6 +53,7 @@ apt-get update -qq && apt-get install -y -qq xvfb mesa-utils libgl1-mesa-dri
 tools/check.sh                              # 임포트 → 문법 → 테스트
 tools/screenshot.sh                         # 메인 장면 스크린샷 → build/screenshots/main.png
 tools/screenshot.sh res://scenes/x.tscn 60  # 다른 장면, 60프레임 뒤
+tools/screenshot.sh "" 30 demo=camp         # 데모 화면: demo=camp | demo=prep | demo=battle
 ```
 
 ## 내 컴퓨터에서 열기
