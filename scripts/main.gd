@@ -44,6 +44,8 @@ var _fit_token: int = 0
 ## 화면 제목 (테스트에서 확인한다)
 @onready var title: Label = $Title
 @onready var header: VBoxContainer = $Header
+## 우리 팀 시너지: 시트 바로 위 (상대 시너지는 위 HUD)
+@onready var own_synergy: HFlowContainer = $OwnSynergy
 @onready var battle_view: BattleView3D = $Field/BattleView3D
 @onready var sheet: PanelContainer = $Sheet
 @onready var sheet_head: HBoxContainer = $Sheet/Box/SheetHead
@@ -199,6 +201,10 @@ func _layout_sheet(show: bool, fit: bool = false) -> void:
 func _apply_sheet_height(show: bool, h: float) -> void:
 	sheet.offset_bottom = -SHEET_BOTTOM
 	sheet.offset_top = -(SHEET_BOTTOM + h)
+	# 우리 시너지는 시트 바로 위에 붙는다 (시트가 없으면 숨김)
+	own_synergy.visible = show
+	own_synergy.offset_bottom = sheet.offset_top - 8.0
+	own_synergy.offset_top = own_synergy.offset_bottom - own_synergy.get_combined_minimum_size().y
 	var bottom := (S_VIEW_HEIGHT - SHEET_BOTTOM - h) if show else BattleView3D.FULL_BOTTOM_Y
 	# 첫 화면은 바로, 그 뒤엔 부드럽게 카메라를 옮긴다.
 	battle_view.set_framing(BattleView3D.framing_for_bottom(bottom), _laid_out)
@@ -281,19 +287,29 @@ func _build_header() -> void:
 	row.add_child(spacer)
 	row.add_child(_badge("flag", "최고 %d" % records.get("best_round", 0), S.MUTED, 16))
 	header.add_child(row)
-	var counts := Synergy.count_tags(state.units)
+	# 위: 상대 팀 시너지, 아래(시트 위): 우리 팀 시너지
 	var chips := HFlowContainer.new()
 	chips.add_theme_constant_override("h_separation", 6)
 	chips.add_theme_constant_override("v_separation", 4)
+	_add_synergy_chips(chips, Synergy.count_tags(state.enemy_team()), S.RED, "상대")
+	header.add_child(chips)
+	_clear(own_synergy)
+	_add_synergy_chips(own_synergy, Synergy.count_tags(state.units), S.GOLD, "우리")
+
+
+## 시너지 칩 줄: [팀 이름] + 특성마다 칩 (켜진 것은 accent 색)
+func _add_synergy_chips(flow: HFlowContainer, counts: Dictionary, accent: Color, team: String) -> void:
+	var name_chip := PanelContainer.new()
+	name_chip.add_theme_stylebox_override("panel", S.box(Color(accent.darkened(0.55), 0.95), accent, 2, 10, -1, 4.0))
+	name_chip.add_child(_label(team, 14, accent.lightened(0.3), false, true))
+	flow.add_child(name_chip)
 	for tag in Synergy.TAG_ORDER:
 		var n: int = counts.get(tag, 0)
-		var lv := Synergy.level(tag, n)
-		var on := lv > 0
+		var on := Synergy.level(tag, n) > 0
 		var chip := PanelContainer.new()
-		chip.add_theme_stylebox_override("panel", S.box(Color(0.42, 0.30, 0.06, 0.9) if on else Color(0, 0, 0, 0.3), S.GOLD if on else Color(1, 1, 1, 0.12), 2, 10, -1, 4.0))
-		chip.add_child(_label(Synergy.describe(tag, n), 14, S.GOLD if on else S.MUTED, false, on))
-		chips.add_child(chip)
-	header.add_child(chips)
+		chip.add_theme_stylebox_override("panel", S.box(Color(accent.darkened(0.6), 0.9) if on else Color(0, 0, 0, 0.45), accent if on else Color(1, 1, 1, 0.12), 2, 10, -1, 4.0))
+		chip.add_child(_label(Synergy.describe(tag, n), 14, accent.lightened(0.25) if on else S.MUTED, false, on))
+		flow.add_child(chip)
 
 
 ## 전투 시작 버튼 옆 체력: 하트 + 굵은 숫자 + 작은 막대 (남은 비율에 따라 초록·노랑·빨강)
