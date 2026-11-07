@@ -11,9 +11,9 @@ extends Control
 ## 스크린샷용 데모: 실행 인자 demo=start | demo=shop | demo=units | demo=enemy | demo=battle (t=<초>) | demo=result | demo=gameover
 
 const S := preload("res://scripts/ui/ui_style.gd")
-const SHEET_OPEN_HEIGHT := 580.0
-const SHEET_CLOSED_HEIGHT := 70.0
-const SHEET_BOTTOM := 112.0
+const SHEET_OPEN_HEIGHT := 660.0
+## 시트 아래 여백 (전투 시작 버튼이 시트 안으로 들어가 아래 버튼 줄이 없다)
+const SHEET_BOTTOM := 10.0
 const S_VIEW_HEIGHT := 1280.0
 
 var state: GameState
@@ -32,8 +32,6 @@ var fast: bool = false
 var last_result: Dictionary = {}
 ## 전투가 끝난 뒤 보여 줄 GameState.apply_result() 요약
 var summary: Dictionary = {}
-## 아래 시트가 펼쳐져 있는가
-var sheet_open: bool = true
 var _laid_out: bool = false
 
 ## 화면 제목 (테스트에서 확인한다)
@@ -120,7 +118,6 @@ func new_run(seed_value: int = 0) -> void:
 	inspect_enemy = -1
 	battling = false
 	summary = {}
-	sheet_open = true
 	refresh()
 
 
@@ -136,11 +133,11 @@ func refresh() -> void:
 		inspect_unit = -1
 	_build_header()
 	if battling:
-		_layout_sheet(false, false)
+		_layout_sheet(false)
 		action_bar.add_child(_action_button("2배속 켜짐" if fast else "2배속", _on_toggle_fast, "PrimaryButton" if fast else "Button", "bolt"))
 		return
 	if not summary.is_empty():
-		_layout_sheet(false, false)
+		_layout_sheet(false)
 		if summary.get("game_over", false):
 			_add_game_over_panel()
 		else:
@@ -160,19 +157,16 @@ func refresh() -> void:
 		var m := _label(message, 17, S.RED, true)
 		content.add_child(m)
 	# 상점은 내용 높이에 딱 맞추고(아래 여백 없음), 유닛 정보·정찰은 최대 높이에 스크롤
-	_layout_sheet(true, sheet_open, inspect_unit < 0 and inspect_enemy < 0)
-	var fight := _action_button("전투 시작", _on_fight, "GoButton", "sword")
-	fight.disabled = not state.can_fight()
-	action_bar.add_child(fight)
+	_layout_sheet(true, inspect_unit < 0 and inspect_enemy < 0)
 
 
-## 시트 보이기/펼치기와 카메라 구도를 맞춘다. fit 이면 시트 높이를 내용에 맞춘다.
-func _layout_sheet(show: bool, expanded: bool, fit: bool = false) -> void:
+## 시트 보이기와 카메라 구도를 맞춘다. fit 이면 시트 높이를 내용에 맞춘다.
+func _layout_sheet(show: bool, fit: bool = false) -> void:
 	sheet.visible = show
-	scroll.visible = expanded
-	var h := SHEET_OPEN_HEIGHT if expanded else SHEET_CLOSED_HEIGHT
-	if show and expanded and fit:
+	var h := SHEET_OPEN_HEIGHT
+	if show and fit:
 		h = minf(SHEET_OPEN_HEIGHT, sheet_fit_height())
+	sheet.offset_bottom = -SHEET_BOTTOM
 	sheet.offset_top = -(SHEET_BOTTOM + h)
 	var bottom := (S_VIEW_HEIGHT - SHEET_BOTTOM - h) if show else BattleView3D.FULL_BOTTOM_Y
 	# 첫 화면은 바로, 그 뒤엔 부드럽게 카메라를 옮긴다.
@@ -200,13 +194,22 @@ func _build_sheet_head() -> void:
 	else:
 		sheet_head.add_child(GameIcon.make("coin", 30))
 		sheet_head.add_child(_label("상점", 24, S.GOLD, false, true))
-		sheet_head.add_child(_label("라운드 %d" % state.round_no, 15, S.MUTED))
+		var reroll := _button("새로고침 %d원" % GameState.REROLL_COST, _on_reroll)
+		reroll.disabled = state.gold < GameState.REROLL_COST
+		sheet_head.add_child(reroll)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sheet_head.add_child(spacer)
-	var toggle := _button("▼" if sheet_open else "▲", _on_toggle_sheet)
-	toggle.custom_minimum_size = Vector2(56, 50)
-	sheet_head.add_child(toggle)
+	# 시트 오른쪽 위: 전투 시작
+	var fight := _button("전투 시작", _on_fight)
+	fight.theme_type_variation = "GoButton"
+	fight.custom_minimum_size = Vector2(190, 56)
+	fight.add_theme_font_size_override("font_size", 22)
+	var ic := GameIcon.make("sword", 26, Color.WHITE)
+	ic.position = Vector2(14, 12)
+	fight.add_child(ic)
+	fight.disabled = not state.can_fight()
+	sheet_head.add_child(fight)
 
 
 func _clear(box: Node) -> void:
@@ -402,15 +405,6 @@ func _add_selection_panel() -> void:
 
 
 func _add_shop() -> void:
-	var head := HBoxContainer.new()
-	head.add_child(_label("높은 라운드일수록 비싼 물건이 잘 나옵니다.\n전장의 유닛을 누르면 그 유닛 정보, 끌면 자리 이동.", 13, S.MUTED))
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(spacer)
-	var reroll := _button("새로고침 %d원" % GameState.REROLL_COST, _on_reroll)
-	reroll.disabled = state.gold < GameState.REROLL_COST
-	head.add_child(reroll)
-	content.add_child(head)
 	# 진열 5개(유닛 2 + 아이템 3)를 한 줄에 같은 폭으로
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
@@ -419,7 +413,6 @@ func _add_shop() -> void:
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(card)
 	content.add_child(row)
-	content.add_child(_label("유닛은 사면 바로 전장에 투입 (최대 %d) · 아이템은 보유함으로" % BattleSim.SLOT_COUNT, 13, S.MUTED))
 
 
 ## 상점 카드: 등급 띠, 모양, 이름, 핵심 능력치, 가격표
@@ -559,15 +552,9 @@ func _add_game_over_panel() -> void:
 
 # ── 입력 처리 ─────────────────────────────────────────
 
-func _on_toggle_sheet() -> void:
-	sheet_open = not sheet_open
-	refresh()
-
-
 ## 전장 탭: 같은 유닛을 다시 누르면 상점으로 돌아간다.
 func _on_field_tapped(side: String, index: int) -> void:
 	message = ""
-	sheet_open = true
 	selected = null
 	if side == "b":
 		inspect_enemy = -1 if inspect_enemy == index else index

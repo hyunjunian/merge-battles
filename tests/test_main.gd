@@ -123,11 +123,7 @@ func test_field_shows_units_and_enemy() -> void:
 
 func test_tap_enemy_shows_detail_and_tap_own_unit_edits() -> void:
 	var main := _spawn()
-	main._on_toggle_sheet()
-	check(not main.sheet_open, "접기")
-	check(not main.scroll.visible, "접으면 내용 숨김")
 	main._on_field_tapped("b", 0)
-	check(main.sheet_open, "전장을 탭하면 다시 펼침")
 	check_eq(main.inspect_enemy, 0, "적 상세 보기")
 	check_eq(main.battle_view.highlight.get("side", ""), "b", "적 강조")
 	main._on_field_tapped("a", 0)
@@ -151,6 +147,17 @@ func test_shop_sheet_fits_content() -> void:
 	check_eq(-main.sheet.offset_top - main.SHEET_BOTTOM, main.SHEET_OPEN_HEIGHT, "정찰은 최대 높이")
 	check_eq(BattleView3D.framing_for_bottom(1160.0), 0.0)
 	check_eq(BattleView3D.framing_for_bottom(590.0), 1.0)
+	free_later(main)
+
+
+func test_fight_button_sits_in_sheet_head() -> void:
+	var main := _spawn()
+	var found := false
+	for c in main.sheet_head.get_children():
+		if c is Button and (c as Button).text == "전투 시작":
+			found = true
+	check(found, "전투 시작 버튼이 시트 머리에 있음")
+	check_eq(main.action_bar.get_child_count(), 0, "아래 버튼 줄은 비어 있음")
 	free_later(main)
 
 
