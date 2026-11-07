@@ -14,6 +14,7 @@ const LUNGE_TIME := 0.25
 const FLASH_TIME := 0.2
 const FLOAT_TIME := 0.9
 const PROJECTILE_TIME := 0.22
+const BLAST_TIME := 0.5
 const PICK_RADIUS := 60.0
 const TEAM_COLORS := {"a": Color(0.25, 0.55, 0.95), "b": Color(0.92, 0.30, 0.26)}
 
@@ -48,7 +49,8 @@ var _next_event: int = 0
 ## side → 유닛 정보 배열: {root, body, ring, mat, ring_mat, base_color, facing, lunge, flash, last_target, empty, label, pos}
 var _units: Dictionary = {"a": [], "b": []}
 var _projectiles: Array = []  # {node, from: Vector3, to: Vector3, age}
-var _floats: Array = []  # {side, idx, text, age}
+var _floats: Array = []  # {side, idx, text, age, color, size}
+var _blasts: Array = []  # {node, mat, age, color}
 
 
 func _init() -> void:
@@ -208,29 +210,75 @@ func _advance(dt: float) -> void:
 	_consume_events()
 	_update_units()
 	_update_projectiles(dt)
+	_update_blasts(dt)
 	_overlay.queue_redraw()
 	if t >= duration() and not done:
 		done = true
 		finished.emit(result.get("winner", "b"))
 
 
+## 스킬·효과별 떠오르는 글자 색
+const FX_COLORS := {
+	"hit": Color(1, 0.85, 0.3), "crit": Color(1, 0.35, 0.2), "chain": Color(0.45, 0.8, 1.0),
+	"poison": Color(0.55, 0.95, 0.3), "thorns": Color(0.75, 0.9, 0.45), "burn": Color(1, 0.55, 0.15),
+	"heal": Color(0.35, 1.0, 0.55), "shield": Color(0.6, 0.85, 1.0), "rage": Color(1, 0.3, 0.3),
+	"revive": Color(1, 0.85, 0.2),
+}
+
+
 func _consume_events() -> void:
 	var events: Array = result.get("events", [])
 	while _next_event < events.size() and float(events[_next_event]["t"]) <= t:
-		var e: Dictionary = events[_next_event]
-		var side: String = e["side"]
-		var foe := "b" if side == "a" else "a"
-		var src: Dictionary = _units[side][e["src"]]
-		var age := t - float(e["t"])
-		src["last_target"] = int(e["dst"])
-		if e.get("ranged", false):
-			_spawn_projectile(side, int(e["src"]), foe, int(e["dst"]), age)
-		else:
-			src["lunge"] = maxf(0.0, LUNGE_TIME - age)
-		var dst: Dictionary = _units[foe][e["dst"]]
-		dst["flash"] = maxf(0.0, FLASH_TIME - age)
-		_floats.append({"side": foe, "idx": e["dst"], "text": "-%d" % roundi(e["dmg"]), "age": age})
+		_show_event(events[_next_event], t - float(events[_next_event]["t"]))
 		_next_event += 1
+
+
+func _show_event(e: Dictionary, age: float) -> void:
+	var side: String = e["side"]
+	var foe := "b" if side == "a" else "a"
+	var kind: String = e.get("kind", "attack")
+	match kind:
+		"attack":
+			var src: Dictionary = _units[side][e["src"]]
+			src["last_target"] = int(e["dst"])
+			if e.get("ranged", false):
+				_spawn_projectile(_state(side, e["src"])["pos"], _state(foe, e["dst"])["pos"], age, Color(1.0, 0.7, 0.1) if side == "a" else Color(0.85, 0.2, 0.8))
+			else:
+				src["lunge"] = maxf(0.0, LUNGE_TIME - age)
+			_hit(foe, e["dst"], age)
+			if e.get("crit", false):
+				_float(foe, e["dst"], "치명타 -%d" % roundi(e["dmg"]), "crit", age, 30)
+			else:
+				_float(foe, e["dst"], "-%d" % roundi(e["dmg"]), "hit", age)
+		"chain":
+			_spawn_projectile(_state(foe, e["from"])["pos"], _state(foe, e["dst"])["pos"], age, FX_COLORS["chain"], 0.1)
+			_hit(foe, e["dst"], age)
+			_float(foe, e["dst"], "-%d" % roundi(e["dmg"]), "chain", age)
+		"poison", "burn", "thorns":
+			_hit(foe, e["dst"], age)
+			_float(foe, e["dst"], "-%d" % roundi(e["dmg"]), kind, age, 20)
+		"fireball":
+			var at: Vector2 = e["at"]
+			_spawn_projectile(_state(side, e["src"])["pos"], Vector3(at.x, 0, at.y), age, FX_COLORS["burn"], 0.25)
+			_spawn_blast(Vector3(at.x, 0.05, at.y), float(e.get("radius", 1.5)), age)
+		"heal":
+			_float(side, e["dst"], "+%d" % roundi(e["amount"]), "heal", age)
+		"shield":
+			_float(side, e["dst"], "보호막 %d" % roundi(e["dmg"]), "shield", age, 20)
+		"rage":
+			_float(side, e["dst"], "분노!", "rage", age, 28)
+		"revive":
+			_float(side, e["dst"], "부활!", "revive", age, 32)
+			_spawn_blast(_state(side, e["dst"])["pos"] + Vector3(0, 0.05, 0), 1.2, age, FX_COLORS["revive"])
+
+
+func _hit(side: String, idx: int, age: float) -> void:
+	var dst: Dictionary = _units[side][idx]
+	dst["flash"] = maxf(0.0, FLASH_TIME - age)
+
+
+func _float(side: String, idx: int, text: String, kind: String, age: float, font_size: int = 24) -> void:
+	_floats.append({"side": side, "idx": idx, "text": text, "age": age, "color": FX_COLORS.get(kind, Color.WHITE), "size": font_size})
 
 
 ## 현재 위치·체력. 재생 중이면 기록을 틱 사이 선형 보간, 미리보기면 고정 위치.
@@ -291,21 +339,53 @@ func _update_units() -> void:
 			mat.albedo_color = base.lerp(Color(1, 0.2, 0.2), u["flash"] / FLASH_TIME) if u["flash"] > 0.0 else base
 
 
-func _spawn_projectile(side: String, src: int, foe: String, dst: int, age: float) -> void:
+func _spawn_projectile(from_pos: Vector3, to_pos: Vector3, age: float, color: Color, radius: float = 0.14) -> void:
 	var mesh := MeshInstance3D.new()
 	var sphere := SphereMesh.new()
-	sphere.radius = 0.14
-	sphere.height = 0.28
+	sphere.radius = radius
+	sphere.height = radius * 2.0
 	mesh.mesh = sphere
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = Color(1.0, 0.7, 0.1) if side == "a" else Color(0.85, 0.2, 0.8)
+	mat.albedo_color = color
 	mesh.material_override = mat
 	_world.add_child(mesh)
-	var from: Vector3 = _state(side, src)["pos"] + Vector3(0, 1.1, 0)
-	var to: Vector3 = _state(foe, dst)["pos"] + Vector3(0, 0.8, 0)
-	_projectiles.append({"node": mesh, "from": from, "to": to, "age": age})
+	_projectiles.append({"node": mesh, "from": from_pos + Vector3(0, 1.1, 0), "to": to_pos + Vector3(0, 0.8, 0), "age": age})
 	_update_projectiles(0.0)
+
+
+## 폭발 고리: 바닥에서 퍼지며 사라진다
+func _spawn_blast(at: Vector3, radius: float, age: float, color: Color = Color(1.0, 0.5, 0.1)) -> void:
+	var mesh := MeshInstance3D.new()
+	var disc := CylinderMesh.new()
+	disc.top_radius = radius
+	disc.bottom_radius = radius
+	disc.height = 0.04
+	mesh.mesh = disc
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(color, 0.6)
+	mesh.material_override = mat
+	mesh.position = at
+	_world.add_child(mesh)
+	_blasts.append({"node": mesh, "mat": mat, "age": age, "color": color})
+	_update_blasts(0.0)
+
+
+func _update_blasts(dt: float) -> void:
+	var keep: Array = []
+	for b: Dictionary in _blasts:
+		b["age"] += dt
+		var node: MeshInstance3D = b["node"]
+		if b["age"] >= BLAST_TIME or mode != Mode.PLAYING:
+			node.queue_free()
+			continue
+		var k: float = b["age"] / BLAST_TIME
+		node.scale = Vector3(0.3 + 0.7 * k, 1, 0.3 + 0.7 * k)
+		(b["mat"] as StandardMaterial3D).albedo_color = Color(b["color"], 0.65 * (1.0 - k))
+		keep.append(b)
+	_blasts = keep
 
 
 func _update_projectiles(dt: float) -> void:
@@ -329,9 +409,10 @@ func _clear_units() -> void:
 		for u: Dictionary in _units[side]:
 			(u["root"] as Node).queue_free()
 		_units[side] = []
-	for p: Dictionary in _projectiles:
+	for p: Dictionary in _projectiles + _blasts:
 		(p["node"] as Node).queue_free()
 	_projectiles = []
+	_blasts = []
 	_floats = []
 
 
@@ -340,7 +421,7 @@ func _clear_units() -> void:
 func _draw_overlay() -> void:
 	if _camera == null:
 		return
-	var font := get_theme_default_font()
+	var font: Font = UiStyle.bold()
 	for side: String in ["a", "b"]:
 		for i in _units[side].size():
 			var u: Dictionary = _units[side][i]
@@ -368,8 +449,10 @@ func _draw_overlay() -> void:
 		var p := _camera.unproject_position(st["pos"] + Vector3(0, 2.2, 0))
 		var a: float = 1.0 - f["age"] / FLOAT_TIME
 		p += Vector2(14, -10 - 50.0 * f["age"])
-		_overlay.draw_string_outline(font, p, f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, 24, 4, Color(0, 0, 0, a))
-		_overlay.draw_string(font, p, f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(1, 0.85, 0.3, a))
+		var fs: int = f.get("size", 24)
+		var col: Color = f.get("color", Color(1, 0.85, 0.3))
+		_overlay.draw_string_outline(font, p, f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 5, Color(0, 0, 0, a))
+		_overlay.draw_string(font, p, f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(col, a))
 	if mode == Mode.PLAYING:
 		_overlay.draw_string(font, Vector2(0, info_top + 26), "%.1f초" % t, HORIZONTAL_ALIGNMENT_CENTER, size.x, 24, Color(0.2, 0.2, 0.25))
 

@@ -11,6 +11,7 @@ extends RefCounted
 ##   regen  초당 체력 회복
 ## 선택 필드
 ##   range  공격 사거리. 가방에 하나라도 있으면 그 유닛은 원거리 유닛이 된다 (가장 긴 값).
+##   skill  전투 중 발동하는 스킬 (scripts/core/skills.gd). 스킬 아이템은 같은 크기의 일반 아이템보다 비싸다.
 
 const DEFS: Dictionary = {
 	"apple": {
@@ -106,8 +107,73 @@ const DEFS: Dictionary = {
 	"phoenix_feather": {
 		"name": "불사조깃털", "cost": 10, "tag": "nature",
 		"shape": [Vector2i(0, 0)],
-		"stats": {"hp": 40.0, "regen": 5.0, "atk": 5.0},
+		"stats": {"hp": 30.0, "regen": 3.0, "atk": 4.0},
+		"skill": {"type": "revive", "pct": 0.5},
 		"color": Color(1.0, 0.45, 0.10),
+	},
+	# ── 스킬 아이템 ──
+	"thorn_mail": {
+		"name": "가시갑옷", "cost": 5, "tag": "guard",
+		"shape": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)],
+		"stats": {"hp": 20.0, "armor": 1.0},
+		"skill": {"type": "thorns", "dmg": 4.0},
+		"color": Color(0.35, 0.50, 0.30),
+	},
+	"venom_fang": {
+		"name": "독니단검", "cost": 5, "tag": "warrior",
+		"shape": [Vector2i(0, 0), Vector2i(0, 1)],
+		"stats": {"atk": 2.0},
+		"skill": {"type": "poison", "dps": 4.0, "dur": 3.0},
+		"color": Color(0.45, 0.75, 0.20),
+	},
+	"ward_charm": {
+		"name": "수호부적", "cost": 5, "tag": "guard",
+		"shape": [Vector2i(0, 0)],
+		"stats": {"hp": 5.0},
+		"skill": {"type": "shield", "amount": 40.0},
+		"color": Color(0.55, 0.80, 1.0),
+	},
+	"berserker_mask": {
+		"name": "광전사가면", "cost": 5, "tag": "warrior",
+		"shape": [Vector2i(0, 0), Vector2i(1, 0)],
+		"stats": {"atk": 2.0, "hp": 10.0},
+		"skill": {"type": "rage", "below": 0.5, "spd": 0.7},
+		"color": Color(0.75, 0.15, 0.15),
+	},
+	"vampire_tooth": {
+		"name": "흡혈송곳니", "cost": 6, "tag": "warrior",
+		"shape": [Vector2i(0, 0)],
+		"stats": {"atk": 2.0},
+		"skill": {"type": "lifesteal", "pct": 0.35},
+		"color": Color(0.55, 0.05, 0.15),
+	},
+	"hawk_lens": {
+		"name": "매의렌즈", "cost": 6, "tag": "arcane",
+		"shape": [Vector2i(0, 0)],
+		"skill": {"type": "crit", "every": 3, "mult": 2.5},
+		"stats": {},
+		"color": Color(0.95, 0.85, 0.40),
+	},
+	"healing_grail": {
+		"name": "치유의성배", "cost": 6, "tag": "nature",
+		"shape": [Vector2i(0, 0), Vector2i(0, 1)],
+		"stats": {"hp": 10.0},
+		"skill": {"type": "heal", "amount": 18.0, "cd": 4.0},
+		"color": Color(0.40, 0.90, 0.70),
+	},
+	"fire_scroll": {
+		"name": "화염두루마리", "cost": 7, "tag": "arcane",
+		"shape": [Vector2i(0, 0)],
+		"stats": {},
+		"skill": {"type": "fireball", "dmg": 12.0, "radius": 1.8, "cd": 5.0},
+		"color": Color(1.0, 0.35, 0.10),
+	},
+	"storm_rod": {
+		"name": "번개지팡이", "cost": 8, "tag": "arcane", "range": 4.0,
+		"shape": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2)],
+		"stats": {"atk": 4.0},
+		"skill": {"type": "chain", "every": 3, "jumps": 2, "pct": 0.6},
+		"color": Color(0.35, 0.55, 1.0),
 	},
 }
 

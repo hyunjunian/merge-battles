@@ -30,6 +30,7 @@ const BASE_MOVE := 2.0
 const MELEE_RANGE := 0.6
 const KITE_DISTANCE := 1.8
 const RETARGET_MARGIN := 1.0
+const CHAIN_RANGE := 3.5
 
 ## frames 의 유닛 하나당 숫자 개수: x, z, hp
 const STRIDE := 3
@@ -41,11 +42,15 @@ static func unit_stats(pack: Backpack, bonus: Dictionary = {}) -> Dictionary:
 	var base := pack.base_stats()
 	for k: String in base.keys():
 		s[k] = float(base[k])
+	var skill_list: Array = []
 	for item in pack.items():
 		var st := item.stats()
 		for k: String in st.keys():
 			s[k] = float(s.get(k, 0.0)) + float(st[k])
 		s["range"] = maxf(s["range"], float(item.def().get("range", MELEE_RANGE)))
+		if item.has_skill():
+			skill_list.append(item.skill())
+	s["skills"] = Skills.aggregate(skill_list)
 	s["atk"] *= 1.0 + float(bonus.get("atk_mult", 0.0))
 	s["spd"] = maxf(MIN_SPD, s["spd"] * (1.0 + float(bonus.get("spd_mult", 0.0))))
 	s["armor"] += float(bonus.get("armor", 0.0))
@@ -97,7 +102,10 @@ static func start_position(side: String, index: int, count: int) -> Vector2:
 ##   winner:   "a" | "b"
 ##   duration: 끝난 시각(초)
 ##   frames:   틱마다 [팀 a 배열, 팀 b 배열]. 배열은 유닛마다 (x, z, hp). frames[0] 은 시작 상태.
-##   events:   [{t, side, src, dst, dmg, ranged}]  side 는 때린 쪽 ("a" | "b")
+##   events:   [{t, kind, side, src, dst, dmg, ...}]  side 는 일으킨 쪽 ("a" | "b")
+##             kind: attack(+ranged, crit) | chain(+from) | poison | thorns | fireball(+at: Vector2) | burn
+##                   dst 는 side 의 반대편 유닛 번호.
+##                   heal(dst 는 같은 편, amount) | shield | rage | revive (src == dst, 같은 편)
 ##   max_a, max_b: 최대 체력 배열
 ##   ranged_a, ranged_b: 원거리 유닛 여부 배열
 static func simulate(team_a: Array[Dictionary], team_b: Array[Dictionary]) -> Dictionary:
@@ -111,7 +119,7 @@ static func simulate(team_a: Array[Dictionary], team_b: Array[Dictionary]) -> Di
 		for side: String in ["a", "b"]:
 			var foe_side := "b" if side == "a" else "a"
 			for i in sides[side].size():
-				_step_fighter(sides[side][i], side, i, sides[foe_side], t, events)
+				_step_fighter(sides[side][i], side, i, sides[side], sides[foe_side], t, events)
 		_separate(sides)
 		frames.append(_snapshot(sides))
 		var a_alive := _alive_count(sides["a"]) > 0
@@ -134,16 +142,27 @@ static func simulate(team_a: Array[Dictionary], team_b: Array[Dictionary]) -> Di
 	}
 
 
-## 한 유닛의 한 틱: 회복 → 목표 선택 → 이동 → 공격.
-static func _step_fighter(f: Dictionary, side: String, i: int, foes: Array, t: float, events: Array[Dictionary]) -> void:
+## 한 유닛의 한 틱: 회복·독·스킬 타이머 → 목표 선택 → 이동 → 공격.
+static func _step_fighter(f: Dictionary, side: String, i: int, allies: Array, foes: Array, t: float, events: Array[Dictionary]) -> void:
 	if f["hp"] <= 0.0:
 		return
+	var foe_side := "b" if side == "a" else "a"
+	var sk: Dictionary = f["sk"]
+	if not f["started"]:
+		f["started"] = true
+		if f["shield"] > 0.0:
+			events.append({"t": t, "kind": "shield", "side": side, "src": i, "dst": i, "dmg": f["shield"]})
 	f["hp"] = minf(f["max_hp"], f["hp"] + f["regen"] * DT)
 	f["cd"] = maxf(0.0, f["cd"] - DT)
+	_tick_poison(f, foe_side, i, t, events)
+	if f["hp"] <= 0.0:
+		return
+	_tick_heal(f, side, i, allies, t, events)
 	var target := choose_target(f["pos"], int(f["target"]), foes)
 	f["target"] = target
 	if target < 0:
 		return
+	_tick_fireball(f, side, i, foes, target, t, events)
 	var foe: Dictionary = foes[target]
 	var pos: Vector2 = f["pos"]
 	var to_foe: Vector2 = foe["pos"] - pos
@@ -156,11 +175,148 @@ static func _step_fighter(f: Dictionary, side: String, i: int, foes: Array, t: f
 		f["pos"] = kite_step(pos, foe["pos"], step * 0.8)
 	elif dist > reach:
 		f["pos"] = _clamp_field(pos + to_foe.normalized() * minf(step, dist - reach + 0.05))
-	elif f["cd"] <= 0.0001:
-		var dmg := damage(f["atk"], foe["armor"])
-		foe["hp"] = maxf(0.0, foe["hp"] - dmg)
+	elif f["cd"] <= 0.0001 and foe["hp"] > 0.0:
+		_attack(f, side, i, allies, foes, target, ranged, t, events)
 		f["cd"] = 1.0 / f["spd"]
-		events.append({"t": t, "side": side, "src": i, "dst": target, "dmg": dmg, "ranged": ranged})
+
+
+## 기본 공격과 공격에 붙는 스킬 (치명타, 흡혈, 독, 가시, 연쇄 번개)
+static func _attack(f: Dictionary, side: String, i: int, allies: Array, foes: Array, target: int, ranged: bool, t: float, events: Array[Dictionary]) -> void:
+	var sk: Dictionary = f["sk"]
+	var foe_side := "b" if side == "a" else "a"
+	var foe: Dictionary = foes[target]
+	f["attacks"] += 1
+	var dmg := damage(f["atk"], foe["armor"])
+	var crit := int(sk["crit_every"]) > 0 and int(f["attacks"]) % int(sk["crit_every"]) == 0
+	if crit:
+		dmg *= float(sk["crit_mult"])
+	events.append({"t": t, "kind": "attack", "side": side, "src": i, "dst": target, "dmg": dmg, "ranged": ranged, "crit": crit})
+	var dealt := _apply_damage(foe, dmg, foe_side, target, t, events)
+	if sk["lifesteal"] > 0.0 and dealt > 0.0:
+		var heal := dealt * float(sk["lifesteal"])
+		f["hp"] = minf(f["max_hp"], f["hp"] + heal)
+		if heal >= 1.0:
+			events.append({"t": t, "kind": "heal", "side": side, "src": i, "dst": i, "amount": heal})
+	if sk["poison_dps"] > 0.0:
+		foe["poison_dps"] = maxf(foe["poison_dps"], float(sk["poison_dps"]))
+		foe["poison_left"] = float(sk["poison_dur"])
+	var thorns: float = foe["sk"]["thorns"]
+	if thorns > 0.0:
+		events.append({"t": t, "kind": "thorns", "side": foe_side, "src": target, "dst": i, "dmg": thorns})
+		_apply_damage(f, thorns, side, i, t, events)
+	if int(sk["chain_every"]) > 0 and int(f["attacks"]) % int(sk["chain_every"]) == 0:
+		var from: Vector2 = foe["pos"]
+		for j in nearest_others(foes, target, int(sk["chain_jumps"]), CHAIN_RANGE):
+			var jd := damage(f["atk"] * float(sk["chain_pct"]), foes[j]["armor"])
+			events.append({"t": t, "kind": "chain", "side": side, "src": i, "from": target, "dst": j, "dmg": jd})
+			_apply_damage(foes[j], jd, foe_side, j, t, events)
+			from = foes[j]["pos"]
+
+
+## 피해 적용: 보호막이 먼저 막고, 쓰러지면 부활을 확인하고, 체력이 낮아지면 분노를 확인한다.
+## 실제로 깎인 체력(보호막 제외)을 돌려준다.
+static func _apply_damage(f: Dictionary, amount: float, side: String, idx: int, t: float, events: Array[Dictionary]) -> float:
+	if f["hp"] <= 0.0 or amount <= 0.0:
+		return 0.0
+	var rest := amount
+	if f["shield"] > 0.0:
+		var absorbed := minf(f["shield"], rest)
+		f["shield"] -= absorbed
+		rest -= absorbed
+	var before: float = f["hp"]
+	f["hp"] = maxf(0.0, f["hp"] - rest)
+	var sk: Dictionary = f["sk"]
+	if f["hp"] <= 0.0 and sk["revive"] > 0.0 and not f["revived"]:
+		f["revived"] = true
+		f["hp"] = f["max_hp"] * float(sk["revive"])
+		f["poison_left"] = 0.0
+		events.append({"t": t, "kind": "revive", "side": side, "src": idx, "dst": idx})
+	elif f["hp"] > 0.0 and sk["rage_spd"] > 0.0 and not f["raged"] and f["hp"] < f["max_hp"] * float(sk["rage_below"]):
+		f["raged"] = true
+		f["spd"] *= 1.0 + float(sk["rage_spd"])
+		events.append({"t": t, "kind": "rage", "side": side, "src": idx, "dst": idx})
+	return before - maxf(f["hp"], 0.0) if f["hp"] < before else 0.0
+
+
+## 독: 1초마다 쌓인 피해를 준다 (방어 무시). side 는 독을 건 쪽.
+static func _tick_poison(f: Dictionary, poisoner_side: String, idx: int, t: float, events: Array[Dictionary]) -> void:
+	if f["poison_left"] <= 0.0:
+		return
+	f["poison_left"] -= DT
+	f["poison_acc"] += f["poison_dps"] * DT
+	f["poison_tick"] += DT
+	if f["poison_tick"] >= 1.0 - 0.0001 or f["poison_left"] <= 0.0:
+		var dmg: float = f["poison_acc"]
+		f["poison_acc"] = 0.0
+		f["poison_tick"] = 0.0
+		if f["poison_left"] <= 0.0:
+			f["poison_dps"] = 0.0
+		var my_side := "b" if poisoner_side == "a" else "a"
+		events.append({"t": t, "kind": "poison", "side": poisoner_side, "src": -1, "dst": idx, "dmg": dmg})
+		_apply_damage(f, dmg, my_side, idx, t, events)
+
+
+## 치유: 쿨다운마다 체력 비율이 가장 낮은(다친) 아군을 회복
+static func _tick_heal(f: Dictionary, side: String, i: int, allies: Array, t: float, events: Array[Dictionary]) -> void:
+	var sk: Dictionary = f["sk"]
+	if sk["heal_amount"] <= 0.0:
+		return
+	f["heal_timer"] -= DT
+	if f["heal_timer"] > 0.0:
+		return
+	var best := -1
+	var best_ratio := 1.0
+	for j in allies.size():
+		var a: Dictionary = allies[j]
+		if a["hp"] <= 0.0:
+			continue
+		var ratio: float = a["hp"] / a["max_hp"]
+		if ratio < best_ratio - 0.0001:
+			best = j
+			best_ratio = ratio
+	if best < 0:
+		f["heal_timer"] = 0.5
+		return
+	var target: Dictionary = allies[best]
+	var amount := minf(float(sk["heal_amount"]), target["max_hp"] - target["hp"])
+	target["hp"] += amount
+	f["heal_timer"] = float(sk["heal_cd"])
+	events.append({"t": t, "kind": "heal", "side": side, "src": i, "dst": best, "amount": amount})
+
+
+## 화염구: 쿨다운마다 목표 주변 반경 안의 적 모두에게 피해 (방어 무시)
+static func _tick_fireball(f: Dictionary, side: String, i: int, foes: Array, target: int, t: float, events: Array[Dictionary]) -> void:
+	var sk: Dictionary = f["sk"]
+	if sk["fireball_dmg"] <= 0.0:
+		return
+	f["fire_timer"] -= DT
+	if f["fire_timer"] > 0.0:
+		return
+	f["fire_timer"] = float(sk["fireball_cd"])
+	var at: Vector2 = foes[target]["pos"]
+	var foe_side := "b" if side == "a" else "a"
+	events.append({"t": t, "kind": "fireball", "side": side, "src": i, "dst": target, "at": at, "radius": float(sk["fireball_radius"])})
+	for j in foes.size():
+		if foes[j]["hp"] > 0.0 and foes[j]["pos"].distance_to(at) <= float(sk["fireball_radius"]):
+			events.append({"t": t, "kind": "burn", "side": side, "src": i, "dst": j, "dmg": float(sk["fireball_dmg"])})
+			_apply_damage(foes[j], float(sk["fireball_dmg"]), foe_side, j, t, events)
+
+
+## target 을 뺀 살아 있는 적 중 target 에서 가까운 순으로 count 명 (max_dist 안)
+static func nearest_others(foes: Array, target: int, count: int, max_dist: float) -> Array[int]:
+	var cands: Array = []
+	var from: Vector2 = foes[target]["pos"]
+	for j in foes.size():
+		if j == target or foes[j]["hp"] <= 0.0:
+			continue
+		var d: float = from.distance_to(foes[j]["pos"])
+		if d <= max_dist:
+			cands.append([d, j])
+	cands.sort_custom(func(x: Array, y: Array) -> bool: return x[0] < y[0] or (x[0] == y[0] and x[1] < y[1]))
+	var out: Array[int] = []
+	for c: Array in cands.slice(0, count):
+		out.append(int(c[1]))
+	return out
 
 
 ## 적에게서 멀어지는 한 걸음. 뒤가 막혀 거의 못 움직이면 전장 가운데 쪽 옆으로 비켜선다.
@@ -223,12 +379,18 @@ static func _make_fighters(side: String, team: Array[Dictionary]) -> Array:
 	for i in team.size():
 		var s := team[i]
 		var spd: float = maxf(MIN_SPD, float(s["spd"]))
+		var sk: Dictionary = s.get("skills", Skills.aggregate([]))
 		out.append({
 			"hp": float(s["hp"]), "max_hp": float(s["hp"]), "atk": float(s["atk"]),
 			"armor": float(s["armor"]), "spd": spd, "regen": float(s["regen"]),
 			"range": float(s.get("range", MELEE_RANGE)), "move": float(s.get("move", BASE_MOVE)),
 			"pos": s.get("pos", start_position(side, i, team.size())), "target": -1,
 			"cd": 0.5 / spd,
+			# 스킬 상태
+			"sk": sk, "shield": float(sk["shield"]), "started": false, "attacks": 0,
+			"poison_dps": 0.0, "poison_left": 0.0, "poison_acc": 0.0, "poison_tick": 0.0,
+			"heal_timer": float(sk["heal_cd"]), "fire_timer": float(sk["fireball_cd"]) * 0.5,
+			"raged": false, "revived": false,
 		})
 	return out
 

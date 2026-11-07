@@ -84,3 +84,12 @@ func _draw() -> void:
 		var short_name: String = item.display_name().substr(0, 2)
 		draw_string_outline(font, origin, short_name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 4, Color(0, 0, 0, 0.7))
 		draw_string(font, origin, short_name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
+		if item.has_skill():
+			# 스킬 아이템: 오른쪽 위 금색 별
+			var star_c := Vector2(pos + Vector2i(item.size().x, 0)) * cell_size + Vector2(-gap - 9, gap + 9)
+			var pts := PackedVector2Array()
+			for k in 10:
+				var r := 7.0 if k % 2 == 0 else 3.0
+				pts.append(star_c + Vector2.from_angle(-PI / 2 + k * PI / 5) * r)
+			draw_colored_polygon(pts, UiStyle.GOLD)
+			draw_polyline(pts + PackedVector2Array([pts[0]]), Color(0, 0, 0, 0.6), 1.2, true)

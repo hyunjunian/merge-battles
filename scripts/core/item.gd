@@ -69,5 +69,16 @@ func is_rotatable() -> bool:
 	return s.x != s.y
 
 
+func skill() -> Dictionary:
+	return def().get("skill", {})
+
+
+func has_skill() -> bool:
+	return not skill().is_empty()
+
+
 func describe() -> String:
-	return Pricing.describe_stats(stats(), float(def().get("range", 0.0)))
+	var text := Pricing.describe_stats(stats(), float(def().get("range", 0.0)))
+	if has_skill():
+		text += ("\n" if text != "" else "") + Skills.describe(skill())
+	return text

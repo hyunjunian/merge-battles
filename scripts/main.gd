@@ -342,6 +342,7 @@ func _add_unit_editor() -> void:
 	var s := BattleSim.unit_stats(pack, Synergy.bonuses(Synergy.count_tags(state.units)))
 	info.add_child(_stat_row(s))
 	info.add_child(_label("초당 피해 %.1f" % dps(s), 15, S.MUTED))
+	_add_skill_lines(info, pack)
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	info.add_child(spacer)
@@ -364,6 +365,8 @@ func _add_inventory() -> void:
 		var v := _card_box(card)
 		v.add_child(_center(ShapeIcon.for_item(item, 13.0)))
 		v.add_child(_label(item.display_name(), 14, S.TEXT, false, true, true))
+		if item.has_skill():
+			v.add_child(_skill_tag(item, 12))
 		flow.add_child(card)
 	content.add_child(flow)
 
@@ -423,7 +426,7 @@ func _add_shop() -> void:
 
 ## 상점 카드: 등급 띠, 모양, 이름, 핵심 능력치, 가격표
 func _offer_card(index: int, offer: Dictionary) -> Control:
-	var w := Vector2(132, 164) if index < GameState.UNIT_OFFERS else Vector2(132, 156)
+	var w := Vector2(132, 170)
 	if offer.is_empty():
 		var sold := _card(Color(0.3, 0.3, 0.3), false, w, Callable())
 		sold.disabled = true
@@ -441,16 +444,18 @@ func _offer_card(index: int, offer: Dictionary) -> Control:
 	var stats: Dictionary
 	if offer["kind"] == "unit":
 		var d := UnitDB.get_def(offer["id"])
-		v.add_child(_center(ShapeIcon.for_unit(d["size"], d["color"], 13.0)))
+		v.add_child(_center(ShapeIcon.for_unit(d["size"], d["color"], minf(13.0, 30.0 / float(d["size"].y)))))
 		v.add_child(_label(d["name"], 17, S.TEXT, false, true, true))
 		stats = d["stats"]
 		card.tooltip_text = Pricing.describe_stats(stats, float(stats.get("range", 0.0)))
 	else:
 		var item := Item.new(offer["id"])
-		v.add_child(_center(ShapeIcon.for_item(item, 15.0)))
+		v.add_child(_center(ShapeIcon.for_item(item, minf(15.0, 30.0 / item.size().y))))
 		v.add_child(_label(item.display_name(), 17, S.TEXT, false, true, true))
 		stats = item.stats()
 		card.tooltip_text = item.describe()
+		if item.has_skill():
+			v.add_child(_skill_tag(item))
 	# 핵심 능력치 두 개
 	var mini := HBoxContainer.new()
 	mini.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -502,6 +507,7 @@ func _add_enemy_detail() -> void:
 	info.add_child(_label("%dx%d 가방 · 가치 %d원" % [pack.width, pack.height, pack.total_value()], 15, S.MUTED))
 	info.add_child(_stat_row(s))
 	info.add_child(_label("초당 피해 %.1f" % dps(s), 15, S.MUTED))
+	_add_skill_lines(info, pack)
 	row.add_child(info)
 	content.add_child(panel)
 	for item in pack.items():
@@ -723,7 +729,7 @@ func _setup_demo(kind: String) -> void:
 	new_run(7)
 	if kind == "start":
 		return
-	# 4라운드쯤: 견습병(장검) + 병사(투구·사과) + 궁수(단검)
+	# 4라운드쯤: 견습병(장검) + 병사(투구·수호부적·흡혈송곳니) + 궁수(단검·화염두루마리)
 	state.round_no = 4
 	state.gold = 6
 	state.hp = 76
@@ -732,13 +738,16 @@ func _setup_demo(kind: String) -> void:
 	state.units[1].slot = 1
 	state.units.append(Backpack.new("archer"))
 	state.units[2].slot = 2
-	var plan := [[0, "sword"], [1, "helmet"], [1, "apple"], [2, "dagger"]]
+	var plan := [[0, "sword"], [1, "helmet"], [1, "ward_charm"], [1, "vampire_tooth"], [2, "dagger"], [2, "fire_scroll"]]
 	for p: Array in plan:
 		var item := Item.new(p[1])
 		state.inventory.append(item)
 		state.equip(item, p[0], state.units[p[0]].find_spot(item))
-	state.inventory.append_array([Item.new("club"), Item.new("herb_pouch")])
-	state.refill_shop()
+	state.inventory.append_array([Item.new("venom_fang"), Item.new("herb_pouch")])
+	state.shop = [
+		{"kind": "unit", "id": "mage"}, {"kind": "unit", "id": "knight"},
+		{"kind": "item", "id": "storm_rod"}, {"kind": "item", "id": "healing_grail"}, {"kind": "item", "id": "hawk_lens"},
+	]
 	active_unit = 1
 	if kind == "units":
 		sheet_tab = "units"
@@ -779,6 +788,28 @@ func _label(text: String, font_size: int = 20, color: Color = S.TEXT, wrap: bool
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	return l
+
+
+## 스킬 아이템 표시: 별 + 스킬 이름
+func _skill_tag(item: Item, font_size: int = 13) -> Control:
+	var h := HBoxContainer.new()
+	h.alignment = BoxContainer.ALIGNMENT_CENTER
+	h.add_theme_constant_override("separation", 3)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(GameIcon.make("star", font_size + 3, S.GOLD))
+	h.add_child(_label(Skills.NAMES.get(item.skill()["type"], "스킬"), font_size, S.GOLD, false, true))
+	return h
+
+
+## 유닛이 가진 스킬 목록
+func _add_skill_lines(box: VBoxContainer, pack: Backpack) -> void:
+	for item in pack.items():
+		if item.has_skill():
+			var h := HBoxContainer.new()
+			h.add_theme_constant_override("separation", 4)
+			h.add_child(GameIcon.make("star", 16, S.GOLD))
+			h.add_child(_label(Skills.describe(item.skill()), 14, S.GOLD, true))
+			box.add_child(h)
 
 
 ## 제목 + 작은 설명
