@@ -64,8 +64,9 @@ static func team_stats(packs: Array[Backpack], side: String = "a") -> Array[Dict
 	var out: Array[Dictionary] = []
 	for i in packs.size():
 		var s := unit_stats(packs[i], bonus)
-		var slot := packs[i].slot if packs[i].slot >= 0 else i
-		s["pos"] = slot_position(side, slot)
+		if packs[i].slot < 0 and not packs[i].has_field_pos:
+			packs[i].slot = i
+		s["pos"] = packs[i].start_pos(side)
 		out.append(s)
 	return out
 
@@ -90,6 +91,31 @@ static func slot_position(side: String, slot: int) -> Vector2:
 	var x: float = SLOT_X[s % 3]
 	var z := FRONT_Z if s < 3 else BACK_Z
 	return Vector2(x, z if side == "a" else -z)
+
+
+## 우리 진영: 가운데 선에서 OWN_MIN_Z 이상 떨어진 +z 쪽 절반. 유닛끼리는 MIN_GAP 이상 떨어뜨린다.
+const OWN_MIN_Z := 1.0
+const MIN_GAP := 1.0
+
+
+static func clamp_own(p: Vector2) -> Vector2:
+	return Vector2(clampf(p.x, -HALF_W, HALF_W), clampf(p.y, OWN_MIN_Z, HALF_D))
+
+
+## p 를 우리 진영 안으로 넣고, others 와 MIN_GAP 보다 가까우면 밀어낸다.
+static func place_own(p: Vector2, others: Array[Vector2]) -> Vector2:
+	var q := clamp_own(p)
+	for _iter in 8:
+		var moved := false
+		for o in others:
+			var d := q.distance_to(o)
+			if d < MIN_GAP:
+				var dir := (q - o).normalized() if d > 0.001 else Vector2(1, 0)
+				q = clamp_own(o + dir * MIN_GAP)
+				moved = true
+		if not moved:
+			break
+	return q
 
 
 ## 자리 번호 없이 줄 세울 때 (테스트용): 가운데 정렬 한 줄.

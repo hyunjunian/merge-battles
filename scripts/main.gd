@@ -1,9 +1,10 @@
 extends Control
 ## 메인 장면. 3D 전장이 화면 전체에 깔려 있고, 그 위에 UI 가 자리마다 겹쳐 있다.
 ##   위: HUD (라운드 배지·체력 바·골드·연승/연패·최고 기록·시너지)
-##   아래: 시트 [유닛] [상점] 탭 / 적 상세. 접을 수 있고, 열리면 전장 카메라가 위쪽으로 물러난다.
+##   아래: 시트. 기본은 상점. 전장의 우리 유닛을 누르면 그 유닛 정보(가방 편성), 적을 누르면 정찰.
+##         접을 수 있고, 열리면 전장 카메라가 위쪽으로 물러난다.
 ##   맨 아래: 행동 버튼. 가운데: 전투 결과·게임 오버 배너.
-##   전장 위쪽은 이번 라운드 상대 (탭하면 상세 전력), 아래쪽은 우리 유닛 (탭하면 그 유닛 편성).
+##   전장 위쪽은 이번 라운드 상대, 아래쪽은 우리 유닛. 우리 유닛은 끌어서 우리 진영 어디로든 옮길 수 있다.
 ## 게임 규칙은 scripts/core/ (GameState) 에 있고, 여기서는 입력을 넘기고 결과를 보여 주기만 한다.
 ## 스타일(색·버튼·글꼴)은 scripts/ui/ui_style.gd, 아이콘은 game_icon.gd.
 ##
@@ -20,12 +21,10 @@ var records: Dictionary = {}
 var records_path: String = Records.DEFAULT_PATH
 var selected: Item = null
 var message: String = ""
-## 편성 중인 우리 유닛 번호 (state.units 의 인덱스)
-var active_unit: int = 0
-## 상세 보기 중인 적 번호 (-1 이면 유닛/상점 탭)
+## 시트에 정보를 띄운 우리 유닛 번호 (state.units 인덱스, -1 이면 없음)
+var inspect_unit: int = -1
+## 정찰 중인 적 번호 (-1 이면 없음). 둘 다 -1 이면 시트는 상점.
 var inspect_enemy: int = -1
-## 시트 탭: "units" | "shop"
-var sheet_tab: String = "shop"
 var battling: bool = false
 var last_result: Dictionary = {}
 ## 전투가 끝난 뒤 보여 줄 GameState.apply_result() 요약
@@ -76,7 +75,7 @@ static func roster(packs: Array[Backpack], side: String) -> Array[Dictionary]:
 	var bonus := Synergy.bonuses(Synergy.count_tags(packs))
 	for pack in packs:
 		out.append({
-			"pos": BattleSim.slot_position(side, pack.slot),
+			"pos": pack.start_pos(side),
 			"color": unit_color(pack),
 			"ranged": BattleSim.is_ranged(BattleSim.unit_stats(pack, bonus)),
 			"empty": false,
@@ -100,6 +99,7 @@ const STAT_ICONS := [
 func _ready() -> void:
 	theme = S.make_theme()
 	battle_view.unit_tapped.connect(_on_field_tapped)
+	battle_view.unit_moved.connect(_on_unit_moved)
 	battle_view.finished.connect(_on_battle_finished)
 	var demo := _demo_arg()
 	if demo != "":
@@ -113,9 +113,8 @@ func new_run(seed_value: int = 0) -> void:
 	records = Records.load_records(records_path)
 	selected = null
 	message = ""
-	active_unit = 0
+	inspect_unit = -1
 	inspect_enemy = -1
-	sheet_tab = "shop"
 	battling = false
 	summary = {}
 	sheet_open = true
@@ -130,7 +129,8 @@ func refresh() -> void:
 	_clear(action_bar)
 	_clear(popup)
 	dim.visible = not summary.is_empty() and not battling
-	active_unit = clampi(active_unit, 0, maxi(0, state.units.size() - 1))
+	if inspect_unit >= state.units.size():
+		inspect_unit = -1
 	_build_header()
 	if battling:
 		_layout_sheet(false, false)
@@ -148,7 +148,7 @@ func refresh() -> void:
 	_refresh_field()
 	if inspect_enemy >= 0:
 		_add_enemy_detail()
-	elif sheet_tab == "units":
+	elif inspect_unit >= 0:
 		_add_unit_editor()
 		_add_inventory()
 		_add_selection_panel()
@@ -175,17 +175,17 @@ func _layout_sheet(show: bool, expanded: bool) -> void:
 
 func _build_sheet_head() -> void:
 	sheet_head.add_theme_constant_override("separation", 8)
-	if inspect_enemy >= 0:
-		var back := _button("◀ 돌아가기", _on_close_enemy)
-		sheet_head.add_child(back)
-		var t := _label("적 %d 정찰" % (inspect_enemy + 1), 22, S.RED, false, true)
-		sheet_head.add_child(t)
+	if inspect_enemy >= 0 or inspect_unit >= 0:
+		sheet_head.add_child(_button("◀ 상점", _on_back_to_shop))
+		if inspect_enemy >= 0:
+			sheet_head.add_child(_label("적 %d 정찰" % (inspect_enemy + 1), 22, S.RED, false, true))
+		else:
+			var u := state.units[inspect_unit]
+			sheet_head.add_child(_label(u.display_name(), 22, u.color().lightened(0.35), false, true))
 	else:
-		for tab: Array in [["units", "유닛 %d" % state.units.size()], ["shop", "상점"]]:
-			var b := _button(tab[1], _on_tab.bind(tab[0]))
-			b.theme_type_variation = "TabButtonOn" if sheet_tab == tab[0] else "TabButton"
-			b.custom_minimum_size = Vector2(150, 50)
-			sheet_head.add_child(b)
+		sheet_head.add_child(GameIcon.make("coin", 30))
+		sheet_head.add_child(_label("상점", 24, S.GOLD, false, true))
+		sheet_head.add_child(_label("라운드 %d" % state.round_no, 15, S.MUTED))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sheet_head.add_child(spacer)
@@ -280,8 +280,8 @@ func _refresh_field() -> void:
 	battle_view.show_preview(roster(state.units, "a"), roster(state.enemy_team(), "b"))
 	if inspect_enemy >= 0:
 		battle_view.set_highlight("b", inspect_enemy)
-	elif not state.units.is_empty() and sheet_tab == "units":
-		battle_view.set_highlight("a", active_unit)
+	elif inspect_unit >= 0:
+		battle_view.set_highlight("a", inspect_unit)
 	else:
 		battle_view.set_highlight("a", -1)
 
@@ -309,28 +309,13 @@ func _stat_row(s: Dictionary, font_size: int = 16) -> Control:
 
 
 func _add_unit_editor() -> void:
-	if state.units.is_empty():
-		content.add_child(_label("전장에 유닛이 없습니다. 상점에서 유닛을 사세요.", 18, S.MUTED, true))
-		return
-	# 유닛 선택 카드
-	var pick := HFlowContainer.new()
-	pick.add_theme_constant_override("h_separation", 8)
-	pick.add_theme_constant_override("v_separation", 8)
-	for i in state.units.size():
-		var u := state.units[i]
-		var card := _card(u.color(), i == active_unit, Vector2(104, 84), _on_unit_tab.bind(i))
-		var v := _card_box(card)
-		v.add_child(_center(ShapeIcon.for_unit(Vector2i(u.width, u.height), u.color(), 11.0)))
-		v.add_child(_label(u.display_name(), 15, S.TEXT, false, true, true))
-		pick.add_child(card)
-	content.add_child(pick)
-	var pack := state.units[active_unit]
+	var pack := state.units[inspect_unit]
 	var panel := _panel(S.NAVY_DEEP, S.EDGE)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
 	panel.add_child(row)
 	var view := BackpackView.new()
-	view.setup(pack, active_unit, cell_size_for(pack))
+	view.setup(pack, inspect_unit, cell_size_for(pack))
 	view.selected = selected
 	view.cell_pressed.connect(_on_cell_pressed)
 	row.add_child(view)
@@ -403,7 +388,7 @@ func _add_selection_panel() -> void:
 
 func _add_shop() -> void:
 	var head := HBoxContainer.new()
-	head.add_child(_section("상점", "라운드 %d · 높은 라운드일수록 비싼 물건이 잘 나옵니다" % state.round_no))
+	head.add_child(_label("높은 라운드일수록 비싼 물건이 잘 나옵니다.\n전장의 유닛을 누르면 그 유닛 정보, 끌면 자리 이동.", 13, S.MUTED))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(spacer)
@@ -566,34 +551,32 @@ func _on_toggle_sheet() -> void:
 	refresh()
 
 
-func _on_tab(tab: String) -> void:
-	sheet_tab = tab
-	sheet_open = true
-	message = ""
-	refresh()
-
-
+## 전장 탭: 같은 유닛을 다시 누르면 상점으로 돌아간다.
 func _on_field_tapped(side: String, index: int) -> void:
 	message = ""
 	sheet_open = true
+	selected = null
 	if side == "b":
 		inspect_enemy = -1 if inspect_enemy == index else index
+		inspect_unit = -1
 	else:
+		inspect_unit = -1 if inspect_unit == index else index
 		inspect_enemy = -1
-		active_unit = index
-		sheet_tab = "units"
 	refresh()
 
 
-func _on_unit_tab(index: int) -> void:
-	active_unit = index
-	inspect_enemy = -1
-	sheet_tab = "units"
+## 전장에서 우리 유닛을 끌어 놓았다
+func _on_unit_moved(index: int, pos: Vector2) -> void:
+	state.move_unit(index, pos)
+	message = ""
 	refresh()
 
 
-func _on_close_enemy() -> void:
+func _on_back_to_shop() -> void:
+	inspect_unit = -1
 	inspect_enemy = -1
+	selected = null
+	message = ""
 	refresh()
 
 
@@ -639,11 +622,12 @@ func _on_sell_item() -> void:
 
 
 func _on_sell_unit() -> void:
-	if active_unit < state.units.size():
-		var pack := state.units[active_unit]
+	if inspect_unit >= 0 and inspect_unit < state.units.size():
+		var pack := state.units[inspect_unit]
 		if state.sell_unit(pack):
 			message = "%s 판매 (+%d원). 가방 속 아이템은 보유함으로 돌아왔습니다." % [pack.display_name(), pack.sell_price()]
-			active_unit = 0
+			inspect_unit = -1
+			selected = null
 	refresh()
 
 
@@ -658,10 +642,10 @@ func _on_buy(index: int) -> void:
 	if reason != "":
 		message = reason
 	elif state.buy(index):
-		message = ""
 		if offer["kind"] == "unit":
-			active_unit = state.units.size() - 1
-			inspect_enemy = -1
+			message = "%s 투입! 전장에서 끌어 자리를 바꿀 수 있습니다." % UnitDB.get_def(offer["id"])["name"]
+		else:
+			message = "아이템은 전장의 유닛을 눌러 가방에 넣으세요."
 	refresh()
 
 
@@ -708,7 +692,8 @@ func _on_battle_finished(_winner: String) -> void:
 
 func _on_continue() -> void:
 	summary = {}
-	sheet_tab = "shop"
+	inspect_unit = -1
+	inspect_enemy = -1
 	refresh()
 
 
@@ -738,6 +723,10 @@ func _setup_demo(kind: String) -> void:
 	state.units[1].slot = 1
 	state.units.append(Backpack.new("archer"))
 	state.units[2].slot = 2
+	# 자유 배치: 병사는 앞 가운데, 견습병은 왼쪽, 궁수는 오른쪽 뒤
+	state.move_unit(1, Vector2(0.0, 1.8))
+	state.move_unit(0, Vector2(-2.0, 2.4))
+	state.move_unit(2, Vector2(2.8, 6.2))
 	var plan := [[0, "sword"], [1, "helmet"], [1, "ward_charm"], [1, "vampire_tooth"], [2, "dagger"], [2, "fire_scroll"]]
 	for p: Array in plan:
 		var item := Item.new(p[1])
@@ -748,9 +737,8 @@ func _setup_demo(kind: String) -> void:
 		{"kind": "unit", "id": "mage"}, {"kind": "unit", "id": "knight"},
 		{"kind": "item", "id": "storm_rod"}, {"kind": "item", "id": "healing_grail"}, {"kind": "item", "id": "hawk_lens"},
 	]
-	active_unit = 1
 	if kind == "units":
-		sheet_tab = "units"
+		inspect_unit = 1
 		selected = state.inventory[0]
 	elif kind == "enemy":
 		inspect_enemy = 0

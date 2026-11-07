@@ -1,7 +1,8 @@
 class_name Backpack
 extends RefCounted
 ## 유닛 하나 = 가방 하나. 유닛 종류(def_id)가 가방 크기와 기본 능력치를 정하고,
-## 가방에 넣은 아이템이 능력치를 바꾼다. slot 은 전장에서 서는 자리 번호.
+## 가방에 넣은 아이템이 능력치를 바꾼다. 전장에서 서는 곳은 field_pos(자유 배치)이고,
+## 아직 정하지 않았으면 slot 번호의 기본 자리에 선다.
 
 const NO_SPOT := Vector2i(-1, -1)
 
@@ -11,10 +12,20 @@ var uid: int
 var def_id: String = ""
 var width: int = 3
 var height: int = 4
-## 전장 자리 번호 (BattleSim.slot_position). -1 이면 아직 없음.
+## 기본 자리 번호 (BattleSim.slot_position). -1 이면 아직 없음.
 var slot: int = -1
+## 플레이어가 옮긴 전장 위치 (우리 팀 좌표). has_field_pos 가 false 면 slot 자리.
+var field_pos: Vector2 = Vector2.ZERO
+var has_field_pos: bool = false
 ## 각 항목: {"item": Item, "pos": Vector2i}
 var placements: Array[Dictionary] = []
+
+
+## 전장 시작 위치
+func start_pos(side: String) -> Vector2:
+	if has_field_pos:
+		return field_pos if side == "a" else Vector2(field_pos.x, -field_pos.y)
+	return BattleSim.slot_position(side, slot)
 
 
 ## def_id 가 있으면 UnitDB 에서 크기를 가져온다. 없으면 w x h 크기의 이름 없는 가방.

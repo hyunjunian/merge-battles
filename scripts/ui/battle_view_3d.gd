@@ -8,6 +8,8 @@ extends Control
 
 signal finished(winner: String)
 signal unit_tapped(side: String, index: int)
+## 미리보기에서 우리 유닛(draggable_side)을 끌어 놓았을 때. pos 는 바닥 좌표 (x, z).
+signal unit_moved(index: int, pos: Vector2)
 
 const SPEED := 1.25
 const LUNGE_TIME := 0.25
@@ -16,6 +18,8 @@ const FLOAT_TIME := 0.9
 const PROJECTILE_TIME := 0.22
 const BLAST_TIME := 0.5
 const PICK_RADIUS := 60.0
+## 이만큼(px) 움직이면 탭이 아니라 드래그
+const DRAG_THRESHOLD := 14.0
 const TEAM_COLORS := {"a": Color(0.25, 0.55, 0.95), "b": Color(0.92, 0.30, 0.26)}
 
 ## 카메라 구도 (720x1280 기준으로 전장 네 모서리를 투영해 고른 값).
@@ -35,6 +39,12 @@ var t: float = 0.0
 var done: bool = false
 ## 미리보기에서 강조할 유닛: {"side": "a"|"b", "index": int} 또는 빈 사전
 var highlight: Dictionary = {}
+## 끌어서 옮길 수 있는 편 ("" 이면 끌기 없음)
+var draggable_side: String = "a"
+var _press: Dictionary = {}  # 누른 유닛 {side, index}
+var _press_at: Vector2 = Vector2.ZERO
+var _dragging: bool = false
+var _own_zone: MeshInstance3D
 ## 0 = FULL, 1 = COMPACT (set_compact 로 바꾸면 부드럽게 옮겨 간다)
 var framing: float = 0.0
 var _framing_target: float = 0.0
@@ -76,6 +86,9 @@ func _init() -> void:
 ## 미리보기 명단 항목: {"pos": Vector2, "color": Color, "ranged": bool, "empty": bool, "label": String}
 func show_preview(ours: Array[Dictionary], enemies: Array[Dictionary]) -> void:
 	mode = Mode.PREVIEW
+	_press = {}
+	if _own_zone != null:
+		_end_drag()
 	result = {}
 	done = false
 	_clear_units()
@@ -93,6 +106,8 @@ func show_preview(ours: Array[Dictionary], enemies: Array[Dictionary]) -> void:
 ## colors_*: 전투에 나가는 유닛마다 대표 색 (result 의 유닛 순서)
 func play(p_result: Dictionary, colors_a: Array[Color], colors_b: Array[Color], start_time: float = 0.0) -> void:
 	mode = Mode.PLAYING
+	_press = {}
+	_end_drag()
 	result = p_result
 	t = 0.0
 	done = false
@@ -150,14 +165,60 @@ func screen_position(side: String, index: int) -> Vector2:
 	return _camera.unproject_position(root.position + Vector3(0, 0.7, 0))
 
 
+## 화면 좌표 → 바닥(y=0) 위의 점 (x, z). 바닥을 안 가리키면 null 대신 현재 값 그대로.
+func ground_point(screen_pos: Vector2) -> Vector2:
+	var origin := _camera.project_ray_origin(screen_pos)
+	var dir := _camera.project_ray_normal(screen_pos)
+	if absf(dir.y) < 0.0001:
+		return Vector2(origin.x, origin.z)
+	var k := -origin.y / dir.y
+	var hit := origin + dir * k
+	return Vector2(hit.x, hit.z)
+
+
+func is_dragging() -> bool:
+	return _dragging
+
+
+## 누르기 → (움직이면) 끌기 → 떼기. 조금만 움직이고 떼면 탭.
 func _gui_input(event: InputEvent) -> void:
-	var mb := event as InputEventMouseButton
-	if mb == null or not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT or mode != Mode.PREVIEW:
+	if mode != Mode.PREVIEW:
 		return
-	var hit := pick(mb.position)
-	if not hit.is_empty():
-		unit_tapped.emit(hit["side"], hit["index"])
+	var mb := event as InputEventMouseButton
+	if mb != null and mb.button_index == MOUSE_BUTTON_LEFT:
+		if mb.pressed:
+			_press = pick(mb.position)
+			_press_at = mb.position
+			_dragging = false
+			if not _press.is_empty():
+				accept_event()
+		elif not _press.is_empty():
+			if _dragging:
+				var p := BattleSim.clamp_own(ground_point(mb.position))
+				_end_drag()
+				unit_moved.emit(int(_press["index"]), p)
+			else:
+				unit_tapped.emit(_press["side"], _press["index"])
+			_press = {}
+			accept_event()
+		return
+	var mm := event as InputEventMouseMotion
+	if mm != null and not _press.is_empty() and _press["side"] == draggable_side:
+		if not _dragging and mm.position.distance_to(_press_at) > DRAG_THRESHOLD:
+			_dragging = true
+			_own_zone.visible = true
+		if _dragging:
+			var p := BattleSim.clamp_own(ground_point(mm.position))
+			var u: Dictionary = _units[_press["side"]][_press["index"]]
+			u["pos"] = Vector3(p.x, 0, p.y)
+			_update_units()
+			_overlay.queue_redraw()
 		accept_event()
+
+
+func _end_drag() -> void:
+	_dragging = false
+	_own_zone.visible = false
 
 
 func set_compact(compact: bool, animate: bool = true) -> void:
@@ -497,6 +558,21 @@ func _build_world() -> void:
 	floor_mesh.material_override = mat
 	floor_mesh.position.y = -0.05
 	_world.add_child(floor_mesh)
+
+	# 끄는 동안만 보이는 우리 진영 표시
+	_own_zone = MeshInstance3D.new()
+	var zone := BoxMesh.new()
+	var depth := BattleSim.HALF_D - BattleSim.OWN_MIN_Z
+	zone.size = Vector3(BattleSim.HALF_W * 2.0 + 0.8, 0.02, depth + 0.8)
+	_own_zone.mesh = zone
+	var zmat := StandardMaterial3D.new()
+	zmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	zmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	zmat.albedo_color = Color(TEAM_COLORS["a"], 0.18)
+	_own_zone.material_override = zmat
+	_own_zone.position = Vector3(0, 0.01, BattleSim.OWN_MIN_Z + depth / 2.0)
+	_own_zone.visible = false
+	_world.add_child(_own_zone)
 
 
 func _mat(color: Color) -> StandardMaterial3D:

@@ -164,3 +164,29 @@ func test_round1_is_winnable_after_shopping() -> void:
 		if gs.fight()["winner"] == "a":
 			wins += 1
 	check(wins >= 12, "1라운드 승률이 너무 낮음: %d/20" % wins)
+
+
+func test_move_unit_clamps_and_separates() -> void:
+	var gs := GameState.new(1)
+	gs.gold = 50
+	gs.shop[0] = {"kind": "unit", "id": "soldier"}
+	gs.buy(0)
+	var p := gs.move_unit(1, Vector2(99.0, 99.0))
+	check_eq(p, Vector2(BattleSim.HALF_W, BattleSim.HALF_D), "진영 밖은 가장자리로")
+	var q := gs.move_unit(1, Vector2(0.0, -3.0))
+	check_eq(q.y, BattleSim.OWN_MIN_Z, "가운데 선을 못 넘음")
+	var first := gs.units[0].start_pos("a")
+	var r := gs.move_unit(1, first)
+	check(r.distance_to(first) >= BattleSim.MIN_GAP - 0.01, "겹치면 밀어냄")
+	check(not gs.units[1].start_pos("b").is_equal_approx(gs.units[1].start_pos("a")), "상대 쪽 좌표는 뒤집힘")
+
+
+func test_new_units_do_not_stack() -> void:
+	var gs := GameState.new(1)
+	gs.gold = 99
+	for i in 3:
+		gs.shop[0] = {"kind": "unit", "id": "recruit"}
+		gs.buy(0)
+	for i in gs.units.size():
+		for j in range(i + 1, gs.units.size()):
+			check(gs.units[i].start_pos("a").distance_to(gs.units[j].start_pos("a")) >= BattleSim.MIN_GAP - 0.01, "새 유닛끼리 안 겹침")

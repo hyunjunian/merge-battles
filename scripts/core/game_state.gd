@@ -26,7 +26,7 @@ var round_no: int = 1
 ## 연속 기록: 양수면 연승 수, 음수면 연패 수
 var streak: int = 0
 var game_over: bool = false
-## 전장의 우리 유닛 (각자 slot 을 가진다)
+## 전장의 우리 유닛 (각자 기본 slot 과, 옮겼다면 field_pos 를 가진다)
 var units: Array[Backpack] = []
 ## 가방에 넣지 않은 보유 아이템
 var inventory: Array[Item] = []
@@ -60,23 +60,51 @@ static func hp_loss_for(surviving_enemies: int) -> int:
 
 # ── 전장 자리 ─────────────────────────────────────────
 
+## 새 유닛이 설 기본 자리: 다른 유닛과 겹치지 않는 첫 자리 번호
 func free_slot() -> int:
-	var used := {}
-	for u in units:
-		used[u.slot] = true
 	for s in BattleSim.SLOT_COUNT:
-		if not used.has(s):
+		var p := BattleSim.slot_position("a", s)
+		var clear := true
+		for u in units:
+			if u.start_pos("a").distance_to(p) < BattleSim.MIN_GAP:
+				clear = false
+				break
+		if clear:
 			return s
-	return -1
+	return 0
 
 
 func has_free_slot() -> bool:
-	return free_slot() >= 0
+	return units.size() < BattleSim.SLOT_COUNT
 
 
 func _deploy(pack: Backpack) -> void:
 	pack.slot = free_slot()
+	pack.field_pos = place_unit_pos(BattleSim.slot_position("a", pack.slot), pack)
+	pack.has_field_pos = true
 	units.append(pack)
+
+
+func _other_positions(except: Backpack) -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	for u in units:
+		if u != except:
+			out.append(u.start_pos("a"))
+	return out
+
+
+func place_unit_pos(p: Vector2, pack: Backpack) -> Vector2:
+	return BattleSim.place_own(p, _other_positions(pack))
+
+
+## 유닛을 전장의 원하는 곳으로 옮긴다 (우리 진영 안, 겹치면 밀어냄). 실제 놓인 위치를 돌려준다.
+func move_unit(index: int, p: Vector2) -> Vector2:
+	if game_over or index < 0 or index >= units.size():
+		return Vector2.ZERO
+	var pack := units[index]
+	pack.field_pos = place_unit_pos(p, pack)
+	pack.has_field_pos = true
+	return pack.field_pos
 
 
 # ── 상점 ──────────────────────────────────────────────

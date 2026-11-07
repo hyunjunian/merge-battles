@@ -40,6 +40,7 @@ func test_select_and_equip_by_taps() -> void:
 	var club := Item.new("club")
 	state.inventory.append(club)
 	main.refresh()
+	main._on_field_tapped("a", 0)
 	main._on_inventory_pressed(club)
 	check(main.selected == club, "보유 아이템 선택")
 	main._on_cell_pressed(0, Vector2i(0, 0))
@@ -60,7 +61,9 @@ func test_buy_unit_appears_on_field() -> void:
 	main._on_buy(0)
 	check_eq(state.units.size(), 2, "유닛 구매")
 	check_eq(main.battle_view.unit_count("a"), 2, "전장에 바로 섬")
-	check_eq(main.active_unit, 1, "산 유닛을 편성")
+	check_eq(main.inspect_unit, -1, "구매 후에도 상점 유지")
+	main._on_field_tapped("a", 1)
+	check_eq(main.inspect_unit, 1, "전장의 유닛을 누르면 그 유닛 정보")
 	main._on_sell_unit()
 	check_eq(state.units.size(), 1, "판매하면 빠짐")
 	check_eq(main.battle_view.unit_count("a"), 1)
@@ -122,8 +125,35 @@ func test_tap_enemy_shows_detail_and_tap_own_unit_edits() -> void:
 	check_eq(main.inspect_enemy, 0, "적 상세 보기")
 	check_eq(main.battle_view.highlight.get("side", ""), "b", "적 강조")
 	main._on_field_tapped("a", 0)
-	check_eq(main.inspect_enemy, -1, "우리 유닛을 누르면 상세 닫힘")
-	check_eq(main.active_unit, 0)
+	check_eq(main.inspect_enemy, -1, "우리 유닛을 누르면 정찰 닫힘")
+	check_eq(main.inspect_unit, 0, "우리 유닛 정보")
+	main._on_field_tapped("a", 0)
+	check_eq(main.inspect_unit, -1, "같은 유닛을 다시 누르면 상점")
+	main._on_field_tapped("b", 0)
+	main._on_back_to_shop()
+	check(main.inspect_unit == -1 and main.inspect_enemy == -1, "◀ 상점")
+	free_later(main)
+
+
+func test_default_sheet_is_shop() -> void:
+	var main := _spawn()
+	check(main.inspect_unit == -1 and main.inspect_enemy == -1, "처음엔 상점")
+	var has_offer := false
+	for c in main.content.get_children():
+		if c is HFlowContainer and c.get_child_count() > 0 and c.get_child(0) is Button:
+			has_offer = true
+	check(has_offer, "상점 카드가 보임")
+	free_later(main)
+
+
+func test_drag_moves_unit_on_field() -> void:
+	var main := _spawn()
+	var state: GameState = main.state
+	main._on_unit_moved(0, Vector2(-3.0, 6.0))
+	check_eq(state.units[0].start_pos("a"), Vector2(-3.0, 6.0), "옮긴 자리")
+	check_eq(BattleSim.team_stats(state.units, "a")[0]["pos"], Vector2(-3.0, 6.0), "전투도 그 자리에서 시작")
+	main._on_unit_moved(0, Vector2(0.0, -5.0))
+	check(state.units[0].start_pos("a").y >= BattleSim.OWN_MIN_Z, "상대 진영으로는 못 감")
 	free_later(main)
 
 
