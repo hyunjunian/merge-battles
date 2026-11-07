@@ -369,7 +369,7 @@ func _add_inventory() -> void:
 		v.add_child(_center(ShapeIcon.for_item(item, 13.0)))
 		v.add_child(_label(item.display_name(), 14, S.TEXT, false, true, true))
 		if item.has_skill():
-			v.add_child(_skill_tag(item, 12))
+			v.add_child(_skill_tag(item, 16))
 		flow.add_child(card)
 	content.add_child(flow)
 
@@ -417,36 +417,36 @@ func _add_shop() -> void:
 
 ## 상점 카드: 등급 띠, 모양, 이름, 핵심 능력치, 가격표
 func _offer_card(index: int, offer: Dictionary) -> Control:
-	var w := Vector2(100, 184)
+	var w := Vector2(100, 228)
 	if offer.is_empty():
 		var sold := _card(Color(0.3, 0.3, 0.3), false, w, Callable())
 		sold.disabled = true
 		var v := _card_box(sold)
 		v.alignment = BoxContainer.ALIGNMENT_CENTER
-		v.add_child(_label("판매 완료", 16, S.MUTED, false, false, true))
+		v.add_child(_label("판매 완료", 18, S.MUTED, false, false, true))
 		return sold
 	var cost := GameState.offer_cost(offer)
 	var col := S.rarity_color(cost)
 	var card := _card(col, false, w, _on_buy.bind(index))
 	card.disabled = state.buy_block_reason(index) != ""
 	var v := _card_box(card)
-	var tag := _label(("유닛 · " if offer["kind"] == "unit" else "") + S.rarity_name(cost), 12, col.lightened(0.3), false, true, true)
+	var tag := _label(("유닛 · " if offer["kind"] == "unit" else "") + S.rarity_name(cost), 15, col.lightened(0.3), false, true, true)
 	v.add_child(tag)
 	var stats: Dictionary
 	if offer["kind"] == "unit":
 		var d := UnitDB.get_def(offer["id"])
-		v.add_child(_center(ShapeIcon.for_unit(d["size"], d["color"], minf(13.0, 30.0 / float(d["size"].y)))))
-		v.add_child(_label(d["name"], 15, S.TEXT, false, true, true))
+		v.add_child(_center(ShapeIcon.for_unit(d["size"], d["color"], minf(18.0, 44.0 / float(d["size"].y)))))
+		v.add_child(_label(d["name"], 20, S.TEXT, false, true, true))
 		stats = d["stats"]
 		card.tooltip_text = Pricing.describe_stats(stats, float(stats.get("range", 0.0)))
 	else:
 		var item := Item.new(offer["id"])
-		v.add_child(_center(ShapeIcon.for_item(item, minf(15.0, 30.0 / item.size().y))))
-		v.add_child(_label(item.display_name(), 15, S.TEXT, false, true, true))
+		v.add_child(_center(ShapeIcon.for_item(item, minf(20.0, 44.0 / item.size().y))))
+		v.add_child(_label(item.display_name(), 20, S.TEXT, false, true, true))
 		stats = item.stats()
 		card.tooltip_text = item.describe()
 		if item.has_skill():
-			v.add_child(_skill_tag(item, 12))
+			v.add_child(_skill_tag(item, 16))
 	# 핵심 능력치 두 개
 	var mini := HBoxContainer.new()
 	mini.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -455,8 +455,8 @@ func _offer_card(index: int, offer: Dictionary) -> Control:
 	for e: Array in STAT_ICONS:
 		if shown >= 2 or not stats.has(e[1]) or float(stats[e[1]]) == 0.0:
 			continue
-		mini.add_child(GameIcon.make(e[0], 14))
-		mini.add_child(_label((e[2] % float(stats[e[1]])).replace(".00", ""), 12, S.TEXT))
+		mini.add_child(GameIcon.make(e[0], 18))
+		mini.add_child(_label((e[2] % float(stats[e[1]])).replace(".00", ""), 16, S.TEXT, false, true))
 		shown += 1
 	mini.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(mini)
@@ -468,8 +468,8 @@ func _offer_card(index: int, offer: Dictionary) -> Control:
 	price.alignment = BoxContainer.ALIGNMENT_CENTER
 	price.add_theme_constant_override("separation", 4)
 	price.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	price.add_child(GameIcon.make("coin", 22))
-	price.add_child(_label(str(cost), 20, S.GOLD if state.gold >= cost else S.RED, false, true))
+	price.add_child(GameIcon.make("coin", 30))
+	price.add_child(_label(str(cost), 28, S.GOLD if state.gold >= cost else S.RED, false, true))
 	v.add_child(price)
 	return card
 
