@@ -168,6 +168,9 @@ func test_tap_enemy_shows_detail_and_tap_own_unit_edits() -> void:
 		if c is Button and (c as Button).text.contains("상점"):
 			has_back = true
 	check(not has_back, "상점 돌아가기 버튼 없음")
+	check(not main.sheet_head.visible, "우리 유닛 정보엔 시트 머리(제목) 없음")
+	main._on_field_tapped("b", 0)
+	check(main.sheet_head.visible, "정찰은 머리 있음")
 	free_later(main)
 
 

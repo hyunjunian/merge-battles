@@ -218,17 +218,18 @@ func sheet_fit_height() -> float:
 	var sb := sheet.get_theme_stylebox("panel")
 	var box_sep := float((sheet.get_child(0) as VBoxContainer).get_theme_constant("separation"))
 	var margins := sb.get_minimum_size().y if sb != null else 0.0
-	return sheet_head.get_combined_minimum_size().y + box_sep + content.get_combined_minimum_size().y + margins
+	var head := sheet_head.get_combined_minimum_size().y + box_sep if sheet_head.visible else 0.0
+	return head + content.get_combined_minimum_size().y + margins
 
 
 func _build_sheet_head() -> void:
 	sheet_head.add_theme_constant_override("separation", 8)
-	if inspect_enemy >= 0 or inspect_unit >= 0:
-		# 상점으로는 패널 밖(전장 빈 곳·위 HUD)을 눌러 돌아간다
-		if inspect_enemy >= 0:
-			sheet_head.add_child(_label("적 %d 정찰" % (inspect_enemy + 1), 22, S.RED, false, true))
-		else:
-			sheet_head.add_child(_label("유닛 정보", 22, S.GOLD, false, true))
+	# 우리 유닛 정보에는 머리가 없다 (이름 칸이 제목 역할). 상점으로는 패널 밖을 눌러 돌아간다
+	sheet_head.visible = inspect_unit < 0 or inspect_enemy >= 0
+	if not sheet_head.visible:
+		return
+	if inspect_enemy >= 0:
+		sheet_head.add_child(_label("적 %d 정찰" % (inspect_enemy + 1), 22, S.RED, false, true))
 	else:
 		sheet_head.add_child(_label("상점", 24, S.GOLD, false, true))
 		sheet_head.add_child(_badge("coin", str(state.gold), S.GOLD))
