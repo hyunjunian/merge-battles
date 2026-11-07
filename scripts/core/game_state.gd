@@ -200,6 +200,43 @@ func can_equip(item: Item, unit_idx: int, pos: Vector2i) -> bool:
 	return units[unit_idx].can_place(item, pos)
 
 
+## 지금 방향으로 안 들어가면 돌려서라도 놓을 수 있는가
+func can_equip_flexible(item: Item, unit_idx: int, pos: Vector2i) -> bool:
+	if can_equip(item, unit_idx, pos):
+		return true
+	if not item.is_rotatable():
+		return false
+	item.rotated = not item.rotated
+	var ok := can_equip(item, unit_idx, pos)
+	item.rotated = not item.rotated
+	return ok
+
+
+## 끌어 놓기용 장착: 지금 방향으로 안 되면 돌려서 넣는다
+func equip_flexible(item: Item, unit_idx: int, pos: Vector2i) -> bool:
+	if equip(item, unit_idx, pos):
+		return true
+	if not item.is_rotatable():
+		return false
+	item.rotated = not item.rotated
+	if equip(item, unit_idx, pos):
+		return true
+	item.rotated = not item.rotated
+	return false
+
+
+## 이 아이템이 그 유닛 가방 어딘가에 들어갈 수 있는가 (이미 들어 있으면 true). 아이템은 바꾸지 않는다.
+func fits_in(item: Item, unit_idx: int) -> bool:
+	if unit_idx < 0 or unit_idx >= units.size():
+		return false
+	var pack := units[unit_idx]
+	if pack.has_item(item):
+		return true
+	var probe := Item.new(item.def_id)
+	probe.rotated = item.rotated
+	return pack.find_spot(probe) != Backpack.NO_SPOT
+
+
 ## 보유함 → 가방, 또는 가방 → 다른 자리/다른 가방.
 func equip(item: Item, unit_idx: int, pos: Vector2i) -> bool:
 	if not can_equip(item, unit_idx, pos):

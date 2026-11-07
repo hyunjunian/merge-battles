@@ -112,7 +112,7 @@ func _ready() -> void:
 	if demo != "":
 		_setup_demo(demo)
 	else:
-		new_run()
+		new_run(_web_seed())
 
 
 ## 상대 출전 풀 (data/opponent_pool.json, 한 번만 읽는다)
@@ -171,15 +171,14 @@ func refresh() -> void:
 	elif inspect_unit >= 0:
 		_add_unit_editor()
 		if not battling:
-			_add_inventory()
 			_add_selection_panel()
 	else:
 		_add_shop()
 	if message != "":
 		var m := _label(message, 17, S.RED, true)
 		content.add_child(m)
-	# 상점과 전투 중 상세는 내용 높이에 딱 맞추고(아래 여백 없음), 편성 중 유닛 정보·정찰은 최대 높이에 스크롤
-	_layout_sheet(true, battling or (inspect_unit < 0 and inspect_enemy < 0))
+	# 시트는 내용 높이에 맞춘다(아래 여백 없음). 내용이 최대 높이를 넘으면 스크롤.
+	_layout_sheet(true, true)
 
 
 ## 시트 보이기와 카메라 구도를 맞춘다. fit 이면 시트 높이를 내용에 맞춘다.
@@ -229,8 +228,7 @@ func _build_sheet_head() -> void:
 		if inspect_enemy >= 0:
 			sheet_head.add_child(_label("적 %d 정찰" % (inspect_enemy + 1), 22, S.RED, false, true))
 		else:
-			var u := state.units[inspect_unit]
-			sheet_head.add_child(_label(u.display_name(), 22, u.color().lightened(0.35), false, true))
+			sheet_head.add_child(_label("유닛 정보", 22, S.GOLD, false, true))
 	else:
 		sheet_head.add_child(_label("상점", 24, S.GOLD, false, true))
 		sheet_head.add_child(_badge("coin", str(state.gold), S.GOLD))
@@ -377,67 +375,119 @@ func _stat_row(s: Dictionary, font_size: int = 16) -> Control:
 	return flow
 
 
+## 상세 패널 2x2 틀: [이름 | 정보] / [가방 | 아이템 목록]. 왼쪽 칸 폭은 가방에 맞춘다.
+func _detail_grid(left_w: float, name_box: Control, info_box: Control, bag_box: Control, list_box: Control, edge: Color) -> Control:
+	var grid := VBoxContainer.new()
+	grid.add_theme_constant_override("separation", 8)
+	for pair: Array in [[name_box, info_box], [bag_box, list_box]]:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		for i in 2:
+			var cell: Control = pair[i]
+			var panel: PanelContainer = cell if cell is PanelContainer else PanelContainer.new()
+			if panel != cell:
+				panel.add_child(cell)
+			panel.add_theme_stylebox_override("panel", S.box(Color(S.NAVY_DEEP, 0.92), edge, 2, 14, -1, 10.0))
+			if i == 0:
+				panel.custom_minimum_size.x = left_w
+			else:
+				panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(panel)
+		grid.add_child(row)
+	return grid
+
+
+## 이름 칸: 이름, 가방 크기·가치, (편성 중) 모두 빼기·판매
+func _name_box(pack: Backpack, color: Color, with_actions: bool) -> Control:
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	v.add_child(_label(pack.display_name(), 26, color, false, true))
+	v.add_child(_label("%dx%d 가방 · 가치 %d원" % [pack.width, pack.height, pack.total_value()], 14, S.MUTED))
+	if with_actions:
+		var strip := _button("모두 빼기", _on_unequip_all)
+		strip.disabled = pack.is_empty()
+		strip.custom_minimum_size = Vector2(0, 42)
+		v.add_child(strip)
+		var sell := _button("판매 +%d원" % pack.sell_price(), _on_sell_unit)
+		sell.theme_type_variation = "DangerButton"
+		sell.custom_minimum_size = Vector2(0, 42)
+		v.add_child(sell)
+	return v
+
+
+## 정보 칸: 능력치, 체력·쿨타임 막대, 초당 피해, 스킬
+func _info_box(pack: Backpack, s: Dictionary, side: String, idx: int) -> Control:
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.add_child(_stat_row(s))
+	v.add_child(LiveStats.make(_live_source.bind(side, idx, s)))
+	v.add_child(_label("초당 피해 %.1f" % dps(s), 14, S.MUTED))
+	_add_skill_lines(v, pack)
+	return v
+
+
+func _bag_box(view: BackpackView) -> Control:
+	var c := CenterContainer.new()
+	c.add_child(view)
+	return c
+
+
+## 상세 패널 아이템 카드 (끌기 가능하면 DragItemCard)
+func _list_item_card(item: Item, dim: bool, draggable: bool, on_press: Callable, cell: float) -> Button:
+	var card := DragItemCard.new()
+	card.item = item
+	card.draggable = draggable
+	card.preview_cell = cell
+	_card(S.rarity_color(item.cost()), item == selected or item == info_item, Vector2(96, 92), on_press, card)
+	card.add_theme_font_size_override("font_size", 17)
+	var v := _card_box(card)
+	v.add_child(_center(ShapeIcon.for_item(item, 12.0)))
+	v.add_child(_label(item.display_name(), 14, S.TEXT, false, true, true))
+	if item.has_skill():
+		v.add_child(_skill_tag(item, 12))
+	if dim:
+		card.modulate = Color(1, 1, 1, 0.35)
+	return card
+
+
 func _add_unit_editor() -> void:
 	var pack := state.units[inspect_unit]
-	var panel := _panel(S.NAVY_DEEP, S.EDGE)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
-	panel.add_child(row)
+	var cell := cell_size_for(pack)
 	var view := BackpackView.new()
-	view.setup(pack, inspect_unit, cell_size_for(pack), not battling)
+	view.setup(pack, inspect_unit, cell, not battling)
 	view.selected = info_item if battling else selected
 	if battling:
 		view.cell_pressed.connect(_on_info_cell.bind(pack))
 	else:
 		view.cell_pressed.connect(_on_cell_pressed)
-	row.add_child(view)
-	var info := VBoxContainer.new()
-	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_theme_constant_override("separation", 6)
-	info.add_child(_label(pack.display_name(), 24, pack.color().lightened(0.35), false, true))
-	info.add_child(_label("%dx%d 가방 · 가치 %d원" % [pack.width, pack.height, pack.total_value()], 15, S.MUTED))
+		view.drop_check = func(item: Item, anchor: Vector2i) -> bool: return state.can_equip_flexible(item, inspect_unit, anchor)
+		view.item_dropped.connect(_on_item_dropped)
 	var s := BattleSim.unit_stats(pack, Synergy.bonuses(Synergy.count_tags(state.units)))
-	info.add_child(_stat_row(s))
-	info.add_child(LiveStats.make(_live_source.bind("a", inspect_unit, s)))
-	info.add_child(_label("초당 피해 %.1f" % dps(s), 15, S.MUTED))
-	_add_skill_lines(info, pack)
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	info.add_child(spacer)
-	if not battling:
-		var actions := HBoxContainer.new()
-		actions.add_theme_constant_override("separation", 8)
-		var strip := _button("모두 빼기", _on_unequip_all)
-		strip.disabled = pack.is_empty()
-		strip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		actions.add_child(strip)
-		var sell := _button("판매 +%d원" % pack.sell_price(), _on_sell_unit)
-		sell.theme_type_variation = "DangerButton"
-		sell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		actions.add_child(sell)
-		info.add_child(actions)
-	row.add_child(info)
-	content.add_child(panel)
+	# 아이템 목록 칸: 보유 아이템. 이 가방에 안 들어가는 건 흐리게. 가방 아이템을 여기로 끌면 뺀다.
+	var zone := DropZone.new()
+	zone.accepts = func(data: Dictionary) -> bool: return not battling and data.get("type", "") == "item" and int(data.get("from_unit", -1)) >= 0
+	zone.on_drop = func(data: Dictionary) -> void: _on_item_dropped_to_list(data["item"])
+	var lv := VBoxContainer.new()
+	lv.add_theme_constant_override("separation", 6)
+	lv.add_child(_label("장착 가능 아이템", 18, S.GOLD, false, true))
+	lv.add_child(_label("전투 중에는 편성할 수 없습니다" if battling else "끌어서 가방에 넣기 · 가방에서 여기로 끌면 빼기", 12, S.MUTED, true))
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 6)
+	flow.add_theme_constant_override("v_separation", 6)
+	if state.inventory.is_empty():
+		flow.add_child(_label("보유 아이템 없음", 15, S.MUTED))
+	var items := state.inventory.duplicate()
+	items.sort_custom(func(a: Item, b: Item) -> bool: return int(state.fits_in(a, inspect_unit)) > int(state.fits_in(b, inspect_unit)))
+	for item: Item in items:
+		var fits := state.fits_in(item, inspect_unit)
+		flow.add_child(_list_item_card(item, not fits, fits and not battling, _on_inventory_pressed.bind(item), cell))
+	lv.add_child(flow)
+	zone.add_child(lv)
+	var left_w := maxf(200.0, pack.width * cell + 24.0)
+	content.add_child(_detail_grid(left_w, _name_box(pack, pack.color().lightened(0.35), not battling), _info_box(pack, s, "a", inspect_unit), _bag_box(view), zone, S.EDGE))
 	if battling:
 		_add_item_info(pack)
-
-
-func _add_inventory() -> void:
-	content.add_child(_section("보유 아이템", "아이템을 고른 뒤 가방 칸을 누르면 들어갑니다"))
-	var flow := HFlowContainer.new()
-	flow.add_theme_constant_override("h_separation", 8)
-	flow.add_theme_constant_override("v_separation", 8)
-	if state.inventory.is_empty():
-		flow.add_child(_label("비어 있음 — 상점에서 아이템을 사세요", 16, S.MUTED))
-	for item in state.inventory:
-		var card := _card(S.rarity_color(item.cost()), item == selected, Vector2(104, 100), _on_inventory_pressed.bind(item))
-		var v := _card_box(card)
-		v.add_child(_center(ShapeIcon.for_item(item, 13.0)))
-		v.add_child(_label(item.display_name(), 14, S.TEXT, false, true, true))
-		if item.has_skill():
-			v.add_child(_skill_tag(item, 16))
-		flow.add_child(card)
-	content.add_child(flow)
 
 
 func _add_selection_panel() -> void:
@@ -550,34 +600,26 @@ func _add_enemy_detail() -> void:
 	var pack := enemies[inspect_enemy]
 	var counts := Synergy.count_tags(enemies)
 	var s := BattleSim.unit_stats(pack, Synergy.bonuses(counts))
-	var panel := _panel(Color(0.20, 0.08, 0.08, 0.95), S.RED)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
-	panel.add_child(row)
+	var cell := cell_size_for(pack)
 	var view := BackpackView.new()
-	view.setup(pack, inspect_enemy, cell_size_for(pack), false)
+	view.setup(pack, inspect_enemy, cell, false)
 	view.selected = info_item
 	view.cell_pressed.connect(_on_info_cell.bind(pack))
-	row.add_child(view)
-	var info := VBoxContainer.new()
-	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_theme_constant_override("separation", 6)
-	info.add_child(_label(pack.display_name(), 24, S.RED.lightened(0.3), false, true))
-	info.add_child(_label("%dx%d 가방 · 가치 %d원" % [pack.width, pack.height, pack.total_value()], 15, S.MUTED))
-	info.add_child(_stat_row(s))
-	info.add_child(LiveStats.make(_live_source.bind("b", inspect_enemy, s)))
-	info.add_child(_label("초당 피해 %.1f" % dps(s), 15, S.MUTED))
-	_add_skill_lines(info, pack)
-	row.add_child(info)
-	content.add_child(panel)
-	_add_item_info(pack)
+	# 아이템 목록 칸: 상대 가방 속 아이템 (누르면 정보)
+	var lv := VBoxContainer.new()
+	lv.add_theme_constant_override("separation", 6)
+	lv.add_child(_label("가방 속 아이템", 18, S.RED.lightened(0.3), false, true))
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 6)
+	flow.add_theme_constant_override("v_separation", 6)
+	if pack.is_empty():
+		flow.add_child(_label("아이템 없음", 15, S.MUTED))
 	for item in pack.items():
-		var line := HBoxContainer.new()
-		line.add_theme_constant_override("separation", 8)
-		line.add_child(ShapeIcon.for_item(item, 11.0))
-		var tag_name: String = Synergy.TRAITS[item.tag()]["name"]
-		line.add_child(_label("%s [%s] %s" % [item.display_name(), tag_name, item.describe()], 15, S.TEXT, true))
-		content.add_child(line)
+		flow.add_child(_list_item_card(item, false, false, _on_info_item.bind(item), cell))
+	lv.add_child(flow)
+	var left_w := maxf(200.0, pack.width * cell + 24.0)
+	content.add_child(_detail_grid(left_w, _name_box(pack, S.RED.lightened(0.3), false), _info_box(pack, s, "b", inspect_enemy), _bag_box(view), lv, Color(S.RED, 0.6)))
+	_add_item_info(pack)
 	var syn: PackedStringArray = []
 	for tag in Synergy.TAG_ORDER:
 		if Synergy.level(tag, counts[tag]) > 0:
@@ -703,6 +745,33 @@ func _on_cell_pressed(unit_index: int, cell: Vector2i) -> void:
 		selected = at
 	else:
 		message = "그 자리에는 들어가지 않습니다. (회전해 보세요)"
+	refresh()
+
+
+## 아이템을 가방 칸에 끌어 놓음 (보유함에서 또는 가방 안에서 옮김)
+func _on_item_dropped(unit_index: int, item: Item, anchor: Vector2i) -> void:
+	if battling:
+		return
+	if state.equip_flexible(item, unit_index, anchor):
+		selected = null
+		message = ""
+	else:
+		message = "그 자리에는 들어가지 않습니다."
+	refresh()
+
+
+## 가방 아이템을 목록으로 끌어 놓음 → 빼기
+func _on_item_dropped_to_list(item: Item) -> void:
+	if battling:
+		return
+	state.unequip(item)
+	selected = null
+	refresh()
+
+
+## 보기 전용 목록의 아이템을 누르면 정보 (다시 누르면 닫힘)
+func _on_info_item(item: Item) -> void:
+	info_item = null if info_item == item else item
 	refresh()
 
 
@@ -832,6 +901,22 @@ func _on_new_run() -> void:
 
 
 # ── 데모 (스크린샷) ───────────────────────────────────
+
+## 웹에서 주소 끝에 #seed=123 을 붙이면 그 시드로 시작한다 (같은 상점·상대로 다시 해 보기·시험용). 없으면 0(무작위).
+func _web_seed() -> int:
+	if not OS.has_feature("web"):
+		return 0
+	var hash_text: Variant = JavaScriptBridge.eval("window.location.hash", true)
+	return seed_from_hash(String(hash_text) if hash_text != null else "")
+
+
+static func seed_from_hash(text: String) -> int:
+	var t := text.trim_prefix("#")
+	for part in t.split("&"):
+		if part.begins_with("seed="):
+			return maxi(0, part.substr(5).to_int())
+	return 0
+
 
 func _demo_arg() -> String:
 	for a in OS.get_cmdline_user_args():
@@ -1063,8 +1148,11 @@ func _action_button(text: String, on_press: Callable, variation: String, icon: S
 
 
 ## 카드 버튼 (테두리 색 = 등급/유닛 색, 고르면 금색 굵은 테두리)
-func _card(edge: Color, is_selected: bool, card_size: Vector2, on_press: Callable) -> Button:
-	var b := _button("", on_press)
+func _card(edge: Color, is_selected: bool, card_size: Vector2, on_press: Callable, b: Button = null) -> Button:
+	if b == null:
+		b = _button("", on_press)
+	elif on_press.is_valid():
+		b.pressed.connect(on_press)
 	b.custom_minimum_size = card_size
 	b.theme_type_variation = ""
 	var border := S.GOLD if is_selected else edge

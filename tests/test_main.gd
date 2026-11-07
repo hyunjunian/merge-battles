@@ -178,7 +178,7 @@ func test_shop_sheet_fits_content() -> void:
 	check(absf(h - main.sheet_fit_height()) < 1.0, "내용 높이에 딱 맞음")
 	check(main.battle_view._framing_target < 1.0, "남는 공간만큼 전장을 크게")
 	main._on_field_tapped("b", 0)
-	check_eq(-main.sheet.offset_top - main.SHEET_BOTTOM, main.SHEET_OPEN_HEIGHT, "정찰은 최대 높이")
+	check(-main.sheet.offset_top - main.SHEET_BOTTOM <= main.SHEET_OPEN_HEIGHT + 0.5, "정찰도 최대 높이 이하")
 	check_eq(BattleView3D.framing_for_bottom(1160.0), 0.0)
 	check_eq(BattleView3D.framing_for_bottom(590.0), 1.0)
 	free_later(main)
@@ -295,3 +295,39 @@ func test_unequip_all_button_flow() -> void:
 	check(state.units[0].is_empty(), "모두 빼기")
 	check(state.inventory.has(club))
 	free_later(main)
+
+
+func test_drag_drop_equips_and_unequips() -> void:
+	var main := _spawn()
+	var state: GameState = main.state
+	var helmet := Item.new("helmet")
+	state.inventory.append(helmet)
+	main._on_field_tapped("a", 0)
+	main._on_item_dropped(0, helmet, Vector2i(0, 0))
+	check_eq(state.unit_of(helmet), 0, "목록 → 가방 끌어 놓기 (돌려서)")
+	main._on_item_dropped_to_list(helmet)
+	check(state.inventory.has(helmet), "가방 → 목록 끌어 놓기로 빼기")
+	free_later(main)
+
+
+func test_backpack_drop_check_and_signal() -> void:
+	var pack := Backpack.new("soldier")
+	var view := BackpackView.new()
+	view.setup(pack, 0, 50.0, true)
+	view.drop_check = func(item: Item, anchor: Vector2i) -> bool: return pack.can_place(item, anchor)
+	var got := []
+	view.item_dropped.connect(func(u: int, it: Item, a: Vector2i) -> void: got.append(a))
+	var sword := Item.new("sword")
+	var data := {"type": "item", "item": sword, "from_unit": -1, "grab": Vector2i.ZERO}
+	check(view._can_drop_data(Vector2(60, 10), data), "빈 칸 (1,0) 에 장검")
+	view._drop_data(Vector2(60, 10), data)
+	check_eq(got, [Vector2i(1, 0)], "놓은 칸")
+	check(not view._can_drop_data(Vector2(60, 60), data), "아래로 넘치면 안 됨")
+	view.free()
+
+
+func test_seed_from_hash() -> void:
+	check_eq(Main.seed_from_hash("#seed=42"), 42)
+	check_eq(Main.seed_from_hash("#a=1&seed=7"), 7)
+	check_eq(Main.seed_from_hash(""), 0)
+	check_eq(Main.seed_from_hash("#seed=abc"), 0)

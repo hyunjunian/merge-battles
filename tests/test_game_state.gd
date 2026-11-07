@@ -256,3 +256,26 @@ func test_shop_mixes_units_and_items_freely() -> void:
 		first_kinds[gs.shop[0]["kind"]] = true
 	check(unit_counts.size() >= 4, "유닛 개수가 매번 다름: %s" % str(unit_counts.keys()))
 	check(first_kinds.has("unit") and first_kinds.has("item"), "첫 칸도 유닛·아이템이 섞임")
+
+
+func test_equip_flexible_rotates_when_needed() -> void:
+	var gs := GameState.new(1)
+	var helmet := Item.new("helmet")  # 2x1
+	gs.inventory.append(helmet)
+	check(not gs.can_equip(helmet, 0, Vector2i(0, 0)), "견습병 1x2 에 가로로는 안 들어감")
+	check(gs.can_equip_flexible(helmet, 0, Vector2i(0, 0)), "돌리면 들어감")
+	check(not helmet.rotated, "확인만으로는 돌리지 않음")
+	check(gs.equip_flexible(helmet, 0, Vector2i(0, 0)), "끌어 놓기 장착")
+	check(helmet.rotated, "돌려서 넣음")
+	check_eq(gs.unit_of(helmet), 0)
+
+
+func test_fits_in() -> void:
+	var gs := GameState.new(1)
+	check(gs.fits_in(Item.new("sword"), 0), "1x2 견습병에 장검")
+	check(not gs.fits_in(Item.new("axe"), 0), "2x2 도끼는 안 들어감")
+	var sword := Item.new("sword")
+	gs.inventory.append(sword)
+	gs.equip(sword, 0, Vector2i(0, 0))
+	check(gs.fits_in(sword, 0), "이미 든 아이템은 들어간 것으로 봄")
+	check(not gs.fits_in(Item.new("apple"), 0), "꽉 차면 안 들어감")

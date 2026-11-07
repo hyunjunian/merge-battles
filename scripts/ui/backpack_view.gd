@@ -3,12 +3,18 @@ extends Control
 ## 가방 그리드 그리기 + 칸 터치. 로직은 GameState 가 하고, 이 뷰는 그리기와 입력 전달만 한다.
 
 signal cell_pressed(unit_index: int, cell: Vector2i)
+## 아이템을 끌어 이 가방의 anchor 칸(모양의 왼쪽 위)에 놓았다
+signal item_dropped(unit_index: int, item: Item, anchor: Vector2i)
 
 var pack: Backpack
 var unit_index: int = 0
 var cell_size: float = 52.0
 var selected: Item = null
 var interactive: bool = true
+## 끌어 온 아이템을 anchor 에 놓을 수 있는가: func(item: Item, anchor: Vector2i) -> bool
+var drop_check: Callable
+var _hover: Dictionary = {}  # 끄는 중 미리보기 {item, anchor, ok}
+var _press_cell: Vector2i = Backpack.NO_SPOT
 
 
 func setup(p_pack: Backpack, p_unit_index: int, p_cell_size: float = 52.0, p_interactive: bool = true) -> void:
@@ -29,13 +35,62 @@ func cell_at(local_pos: Vector2) -> Vector2i:
 	return c
 
 
+## 탭은 뗄 때 보낸다 (누른 채 끌면 드래그가 되고 탭은 없다)
 func _gui_input(event: InputEvent) -> void:
 	var mb := event as InputEventMouseButton
-	if mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
-		var c := cell_at(mb.position)
-		if c != Backpack.NO_SPOT:
-			cell_pressed.emit(unit_index, c)
-			accept_event()
+	if mb == null or mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	var c := cell_at(mb.position)
+	if mb.pressed:
+		_press_cell = c
+		accept_event()
+	elif c != Backpack.NO_SPOT and c == _press_cell:
+		_press_cell = Backpack.NO_SPOT
+		cell_pressed.emit(unit_index, c)
+		accept_event()
+
+
+## 가방 속 아이템 끌기 (편성 가능할 때만)
+func _get_drag_data(at: Vector2) -> Variant:
+	if not interactive or pack == null:
+		return null
+	var c := cell_at(at)
+	var it := pack.item_at(c) if c != Backpack.NO_SPOT else null
+	if it == null:
+		return null
+	_press_cell = Backpack.NO_SPOT
+	var grab := c - pack.position_of(it)
+	set_drag_preview(DragItemCard.make_preview(it, cell_size, grab))
+	return {"type": "item", "item": it, "from_unit": unit_index, "grab": grab}
+
+
+func _can_drop_data(at: Vector2, data: Variant) -> bool:
+	if not interactive or typeof(data) != TYPE_DICTIONARY or data.get("type", "") != "item":
+		_set_hover({})
+		return false
+	var it: Item = data["item"]
+	var anchor := Vector2i(floori(at.x / cell_size), floori(at.y / cell_size)) - Vector2i(data.get("grab", Vector2i.ZERO))
+	var ok := drop_check.is_valid() and bool(drop_check.call(it, anchor))
+	_set_hover({"item": it, "anchor": anchor, "ok": ok})
+	return ok
+
+
+func _drop_data(_at: Vector2, data: Variant) -> void:
+	var anchor: Vector2i = _hover.get("anchor", Backpack.NO_SPOT)
+	_set_hover({})
+	item_dropped.emit(unit_index, data["item"], anchor)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_DRAG_END or what == NOTIFICATION_MOUSE_EXIT:
+		_set_hover({})
+
+
+func _set_hover(h: Dictionary) -> void:
+	if h == _hover:
+		return
+	_hover = h
+	queue_redraw()
 
 
 func _draw() -> void:
@@ -92,3 +147,14 @@ func _draw() -> void:
 				pts.append(star_c + Vector2.from_angle(-PI / 2 + k * PI / 5) * r)
 			draw_colored_polygon(pts, UiStyle.GOLD)
 			draw_polyline(pts + PackedVector2Array([pts[0]]), Color(0, 0, 0, 0.6), 1.2, true)
+	# 끄는 중: 놓일 자리 미리보기 (초록 = 들어감, 빨강 = 안 들어감)
+	if not _hover.is_empty():
+		var it: Item = _hover["item"]
+		var col := Color(0.35, 0.95, 0.45, 0.45) if _hover["ok"] else Color(1.0, 0.3, 0.3, 0.4)
+		for c in it.cells():
+			var cell: Vector2i = _hover["anchor"] + c
+			if cell.x < 0 or cell.y < 0 or cell.x >= pack.width or cell.y >= pack.height:
+				continue
+			var r := Rect2(Vector2(cell) * cell_size, Vector2.ONE * cell_size).grow(-gap)
+			draw_rect(r, col)
+			draw_rect(r, Color(col, 0.9), false, 2.0)
