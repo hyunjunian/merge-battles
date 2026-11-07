@@ -4,7 +4,7 @@ extends RefCounted
 ##
 ## 규칙
 ## - 체력 100, 1라운드부터 시작. 매 라운드 전투를 하고, 승패와 상관없이 다음 라운드로 간다.
-## - 지면 살아남은 상대 유닛 수 × HP_LOSS_PER_UNIT 만큼 체력이 준다. 0 이하가 되면 게임 오버(기록 저장).
+## - 지면 그 라운드 수만큼 체력이 준다. 0 이하가 되면 게임 오버(기록 저장).
 ## - 라운드가 끝날 때마다 돈을 받는다: 기본 BASE_INCOME + 연승/연패 보너스(연속 라운드 수 - 1, 최대 MAX_STREAK_BONUS).
 ## - 상점에서 유닛과 아이템을 산다. 유닛은 사는 즉시 전장에 나가고 빼려면 팔아야 한다.
 ##   아이템은 보유함에 들어가고, 유닛 가방에 넣고 뺄 수 있다. 판매가는 항상 구매가보다 낮다.
@@ -15,7 +15,6 @@ const START_GOLD := 4
 const START_UNIT := "recruit"
 const BASE_INCOME := 3
 const MAX_STREAK_BONUS := 5
-const HP_LOSS_PER_UNIT := 8
 ## 상점 칸 수. 칸마다 UNIT_CHANCE 확률로 유닛, 아니면 아이템 (개수·순서 고정 없음)
 const SHOP_SIZE := 5
 const UNIT_CHANCE := 0.4
@@ -62,8 +61,9 @@ static func interest_for(gold_value: int) -> int:
 	return maxi(0, gold_value) / INTEREST_PER
 
 
-static func hp_loss_for(surviving_enemies: int) -> int:
-	return HP_LOSS_PER_UNIT * maxi(1, surviving_enemies)
+## 지면 잃는 체력 = 그 라운드 수
+static func hp_loss_for(round_value: int) -> int:
+	return maxi(1, round_value)
 
 
 # ── 전장 자리 ─────────────────────────────────────────
@@ -362,22 +362,22 @@ static func surviving(result: Dictionary, side: int) -> int:
 ## 전투 결과 반영(우리가 a 쪽). apply_outcome 참고.
 func apply_result(result: Dictionary) -> Dictionary:
 	var won: bool = result["winner"] == "a"
-	return apply_outcome(won, 0 if won else surviving(result, 1))
+	return apply_outcome(won)
 
 
-## 승패와 (졌을 때) 살아남은 상대 유닛 수로 체력·연속 기록·수입·다음 라운드·상점을 갱신한다.
+## 승패로 체력(지면 라운드 수만큼)·연속 기록·수입·다음 라운드·상점을 갱신한다.
 ## 출전 풀 수집(봇끼리 대전)에서도 양쪽 플레이어에 각각 쓴다.
-## 반환: {won, hp_loss, survivors, income, bonus, streak, round_played, game_over, victory}
-func apply_outcome(won: bool, survivors: int) -> Dictionary:
+## 반환: {won, hp_loss, income, bonus, interest, streak, round_played, game_over, victory}
+func apply_outcome(won: bool) -> Dictionary:
 	var played := round_no
-	var loss := 0 if won else hp_loss_for(survivors)
+	var loss := 0 if won else hp_loss_for(played)
 	hp -= loss
 	if won:
 		streak = streak + 1 if streak > 0 else 1
 	else:
 		streak = streak - 1 if streak < 0 else -1
 	var summary := {
-		"won": won, "hp_loss": loss, "survivors": survivors, "streak": streak,
+		"won": won, "hp_loss": loss, "streak": streak,
 		"round_played": played, "income": 0, "bonus": 0, "interest": 0, "game_over": false, "victory": false,
 	}
 	if hp <= 0:

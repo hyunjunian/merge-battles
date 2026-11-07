@@ -93,12 +93,12 @@ func test_selling_unit_returns_items_and_less_gold() -> void:
 	check_eq(gs.gold, gold + unit.sell_price() + club.sell_price())
 
 
-func test_loss_reduces_hp_by_surviving_enemies() -> void:
+func test_loss_reduces_hp_by_round() -> void:
 	var gs := GameState.new(1)
 	var s := gs.apply_result(_result("b", 2))
 	check(not s["won"])
-	check_eq(s["survivors"], 2)
-	check_eq(gs.hp, 100 - 2 * GameState.HP_LOSS_PER_UNIT)
+	check_eq(s["hp_loss"], 1, "1라운드 패배 → 체력 -1")
+	check_eq(gs.hp, 99)
 	check_eq(gs.round_no, 2, "져도 다음 라운드")
 	var hp := gs.hp
 	gs.apply_result(_result("a", 0))
@@ -122,7 +122,7 @@ func test_income_grows_with_streaks() -> void:
 
 func test_game_over_when_hp_runs_out() -> void:
 	var gs := GameState.new(1)
-	gs.hp = 10
+	gs.hp = 1
 	var s := gs.apply_result(_result("b", 3))
 	check(s["game_over"], "게임 오버")
 	check(gs.game_over)
@@ -288,7 +288,7 @@ func test_interest_per_ten_gold() -> void:
 	check_eq(GameState.interest_for(-3), 0)
 	var gs := GameState.new(3)
 	gs.gold = 23
-	var s := gs.apply_outcome(true, 0)
+	var s := gs.apply_outcome(true)
 	check_eq(s["interest"], 2, "전투 끝에 가진 23원 → 이자 2원")
 	check_eq(s["income"], GameState.income_for(s["streak"]) + 2, "수입에 이자 포함")
 	check_eq(gs.gold, 23 + s["income"])

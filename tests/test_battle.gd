@@ -178,4 +178,4 @@ func test_player_without_units_can_fight_and_loses() -> void:
 	var r := gs.fight()
 	var summary := gs.apply_result(r)
 	check(not summary["won"], "유닛이 없으면 패배")
-	check_eq(summary["hp_loss"], GameState.hp_loss_for(GameState.surviving(r, 1)), "살아남은 상대 유닛만큼 체력 감소")
+	check_eq(summary["hp_loss"], GameState.hp_loss_for(1), "1라운드 패배는 체력 -1")

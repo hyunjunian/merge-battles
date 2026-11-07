@@ -627,8 +627,8 @@ func _add_enemy_detail() -> void:
 		if Synergy.level(tag, counts[tag]) > 0:
 			syn.append(Synergy.describe(tag, counts[tag]))
 	content.add_child(_label("상대 시너지: " + (", ".join(syn) if not syn.is_empty() else "없음"), 15, S.GOLD, true))
-	content.add_child(_label("상대 팀 유닛 %d · 총가치 %d원 · 지면 최대 체력 -%d" % [
-		enemies.size(), EnemyGen.total_value(enemies), GameState.hp_loss_for(enemies.size())], 15, S.MUTED, true))
+	content.add_child(_label("상대 팀 유닛 %d · 총가치 %d원 · 지면 체력 -%d" % [
+		enemies.size(), EnemyGen.total_value(enemies), GameState.hp_loss_for(state.round_no)], 15, S.MUTED, true))
 
 
 ## 결과 배너
@@ -640,7 +640,7 @@ func _add_result_panel() -> void:
 	box.add_child(_label("ROUND %d" % summary["round_played"], 18, S.MUTED, false, true, true))
 	box.add_child(_label("승리!" if won else "패배", 64, accent, false, true, true))
 	if not won:
-		box.add_child(_line_icon("heart", "체력 -%d  (살아남은 적 %d)" % [summary["hp_loss"], summary["survivors"]], S.RED))
+		box.add_child(_line_icon("heart", "체력 -%d  (라운드 %d)" % [summary["hp_loss"], summary["round_played"]], S.RED))
 	var income_text := "+%d원" % summary["income"]
 	var parts: PackedStringArray = ["기본 %d" % GameState.BASE_INCOME]
 	if summary["bonus"] > 0:
@@ -995,11 +995,11 @@ func _setup_demo(kind: String) -> void:
 		summary = state.apply_result(last_result)
 	elif kind == "victory":
 		state.hp = 64
-		summary = {"won": true, "hp_loss": 0, "survivors": 0, "streak": 5, "round_played": 24, "income": 7, "bonus": 4, "game_over": false, "victory": true}
+		summary = {"won": true, "hp_loss": 0, "streak": 5, "round_played": 24, "income": 7, "bonus": 4, "game_over": false, "victory": true}
 		records = {"best_round": 24, "runs": 6, "last_round": 24}
 	elif kind == "gameover":
 		state.hp = 1
-		summary = {"won": false, "hp_loss": 16, "survivors": 2, "streak": -3, "round_played": 9, "income": 0, "bonus": 0, "game_over": true}
+		summary = {"won": false, "hp_loss": 9, "streak": -3, "round_played": 9, "income": 0, "bonus": 0, "game_over": true}
 		records = {"best_round": 12, "runs": 5, "last_round": 9}
 	refresh()
 

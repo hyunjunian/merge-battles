@@ -50,8 +50,8 @@ static func build(players: int = DEFAULT_PLAYERS, seed_value: int = 1, log_progr
 static func _duel(a: Bot, b: Bot) -> void:
 	var r := BattleSim.simulate(BattleSim.team_stats(a.state.units, "a"), BattleSim.team_stats(b.state.units, "b"))
 	var a_won: bool = r["winner"] == "a"
-	a.state.apply_outcome(a_won, 0 if a_won else GameState.surviving(r, 1))
-	b.state.apply_outcome(not a_won, GameState.surviving(r, 0) if a_won else 0)
+	a.state.apply_outcome(a_won)
+	b.state.apply_outcome(not a_won)
 
 
 ## 유령전: real 만 결과를 받는다
@@ -59,7 +59,7 @@ static func _ghost_duel(real: Bot, ghost: Bot) -> void:
 	var ghost_units := OpponentPool.build_team(OpponentPool.snapshot(ghost.state.units))
 	var r := BattleSim.simulate(BattleSim.team_stats(real.state.units, "a"), BattleSim.team_stats(ghost_units, "b"))
 	var won: bool = r["winner"] == "a"
-	real.state.apply_outcome(won, 0 if won else GameState.surviving(r, 1))
+	real.state.apply_outcome(won)
 
 
 static func _shuffle(arr: Array, rng: RandomNumberGenerator) -> void:

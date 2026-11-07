@@ -58,7 +58,7 @@ func test_game_uses_pool_round_and_wins_at_the_end() -> void:
 	check_eq(team.size(), 1)
 	check(team[0].def_id in ["recruit", "scout"], "1라운드 출전 세팅 중 하나")
 	check_eq(gs.enemy_team()[0].def_id, team[0].def_id, "같은 라운드엔 같은 상대")
-	var s := gs.apply_outcome(true, 0)
+	var s := gs.apply_outcome(true)
 	check(s["victory"], "2라운드 데이터가 없으면 우승")
 	check(gs.victory)
 	check(not gs.can_fight(), "우승 뒤엔 더 싸우지 않음")
@@ -115,7 +115,7 @@ func test_reroll_enemy_costs_gold_and_resets_next_round() -> void:
 	check_eq(gs.gold, gold - GameState.ENEMY_REROLL_COST)
 	check(gs.enemy_team()[0].field_pos != before, "다른 출전으로 바뀜")
 	check_eq(gs.enemy_reroll_count(), 1)
-	gs.apply_outcome(true, 0)
+	gs.apply_outcome(true)
 	check_eq(gs.enemy_reroll_count(), 0, "다음 라운드는 새로 시작")
 	gs.gold = 0
 	check(not gs.reroll_enemy(), "돈이 없으면 못 바꿈")
