@@ -1,0 +1,76 @@
+name: Deploy to GitHub Pages
+
+# main 에 push 하면 Godot 웹 빌드를 만들어 GitHub Pages 에 배포한다.
+# 저장소 Settings → Pages → Build and deployment → Source 를 "GitHub Actions" 로 한 번 설정해야 한다.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Godot version
+        id: ver
+        run: |
+          v="$(cat .godot-version)"          # 예: 4.7.2.stable
+          echo "dir=$v" >> "$GITHUB_OUTPUT"   # 템플릿 폴더 이름
+          echo "tag=${v%.*}-${v##*.}" >> "$GITHUB_OUTPUT"  # 릴리스 태그: 4.7.2-stable
+
+      - name: Cache Godot and web templates
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot-bin
+            ~/.local/share/godot/export_templates/${{ steps.ver.outputs.dir }}
+          key: godot-web-${{ steps.ver.outputs.tag }}
+
+      - name: Install Godot and web templates
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          TAG: ${{ steps.ver.outputs.tag }}
+          DIR: ${{ steps.ver.outputs.dir }}
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${TAG}"
+          mkdir -p ~/godot-bin "$HOME/.local/share/godot/export_templates/${DIR}"
+          curl -fsSL -o /tmp/godot.zip "${base}/Godot_v${TAG}_linux.x86_64.zip"
+          unzip -q -o /tmp/godot.zip -d /tmp/godot
+          mv "/tmp/godot/Godot_v${TAG}_linux.x86_64" ~/godot-bin/godot
+          chmod +x ~/godot-bin/godot
+          curl -fsSL -o /tmp/templates.tpz "${base}/Godot_v${TAG}_export_templates.tpz"
+          unzip -j -o /tmp/templates.tpz 'templates/web_*' 'templates/version.txt' \
+            -d "$HOME/.local/share/godot/export_templates/${DIR}"
+          rm /tmp/templates.tpz
+
+      - name: Run checks
+        run: GODOT=~/godot-bin/godot tools/check.sh
+
+      - name: Export web build
+        run: GODOT=~/godot-bin/godot tools/export_web.sh
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
