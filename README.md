@@ -60,7 +60,7 @@ apt-get update -qq && apt-get install -y -qq xvfb mesa-utils libgl1-mesa-dri
 tools/check.sh                              # 임포트 → 문법 → 테스트
 tools/screenshot.sh                         # 메인 장면 스크린샷 → build/screenshots/main.png
 tools/screenshot.sh res://scenes/x.tscn 60  # 다른 장면, 60프레임 뒤
-tools/screenshot.sh "" 30 demo=camp         # 데모 화면: demo=start | shop | enemy | battle (t=초) | result | gameover
+tools/screenshot.sh "" 30 demo=shop         # 데모 화면: demo=start | shop | enemy | battle (t=초) | result | gameover
 ```
 
 ## 웹 배포 (GitHub Pages)
