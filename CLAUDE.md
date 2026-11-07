@@ -20,7 +20,7 @@ Godot 4.7.2.stable · GDScript 게임 프로젝트. Claude Code 클라우드 세
 | `assets/` | 그림·소리·글꼴. 한글 글꼴은 `assets/theme.tres`(메인 장면 theme)로 적용 |
 | `tests/` | `test_*.gd` 테스트(애드온 없는 자체 실행기 `run_tests.gd`) |
 | `tools/check.sh` | 임포트 → 문법 검사 → 테스트 |
-| `tools/screenshot.sh` | 장면을 실행해 `build/screenshots/<장면>.png` 저장 (xvfb 필요). 추가 인자 `demo=start\|shop\|units\|enemy\|battle\|result\|gameover` 로 데모 화면, `t=<초>` 로 전투 시점, `inspect=a1\|b0` 로 전투 중 상세, `info=1` 로 그 가방 첫 아이템 정보, `demo=victory` 우승 화면 |
+| `tools/screenshot.sh` | 장면을 실행해 `build/screenshots/<장면>.png` 저장 (xvfb 필요). 추가 인자 `demo=start\|shop\|units\|enemy\|battle\|result\|gameover` 로 데모 화면, `t=<초>` 로 전투 시점, `inspect=a1\|b0` 로 전투 중 상세, `info=1` 로 그 가방 첫 아이템 정보, `demo=units move=1` 아이템 옮기기 확인 창, `demo=victory` 우승 화면 |
 | 웹 `#seed=N` | 배포 주소 끝에 붙이면 그 시드로 시작(같은 상점·상대 재현, 브라우저 시험용) |
 | `tools/build_pool.gd` | 상대 출전 풀 만들기: `godot --headless --path . -s res://tools/build_pool.gd -- [N] [seed]` → `data/opponent_pool.json` |
 

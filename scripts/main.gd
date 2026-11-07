@@ -24,6 +24,9 @@ var selected: Item = null
 ## 보기 전용 상세(전투 중·적 정찰)에서 누른 아이템 (정보만 보여 줌)
 var info_item: Item = null
 var message: String = ""
+## 다른 유닛의 아이템을 옮기기 전 확인: {item, unit, anchor}
+var pending_move: Dictionary = {}
+var _confirm_layer: Control = null
 ## 시트에 정보를 띄운 우리 유닛 번호 (state.units 인덱스, -1 이면 없음)
 var inspect_unit: int = -1
 ## 정찰 중인 적 번호 (-1 이면 없음). 둘 다 -1 이면 시트는 상점.
@@ -179,6 +182,7 @@ func refresh() -> void:
 		content.add_child(m)
 	# 시트는 내용 높이에 맞춘다(아래 여백 없음). 내용이 최대 높이를 넘으면 스크롤.
 	_layout_sheet(true, true)
+	_update_confirm()
 
 
 ## 시트 보이기와 카메라 구도를 맞춘다. fit 이면 시트 높이를 내용에 맞춘다.
@@ -430,7 +434,7 @@ func _bag_box(view: BackpackView) -> Control:
 
 
 ## 상세 패널 아이템 카드 (끌기 가능하면 DragItemCard)
-func _list_item_card(item: Item, dim: bool, draggable: bool, on_press: Callable, cell: float) -> Button:
+func _list_item_card(item: Item, dim: bool, draggable: bool, on_press: Callable, cell: float, owner_name: String = "") -> Button:
 	var card := DragItemCard.new()
 	card.item = item
 	card.draggable = draggable
@@ -442,6 +446,8 @@ func _list_item_card(item: Item, dim: bool, draggable: bool, on_press: Callable,
 	v.add_child(_label(item.display_name(), 14, S.TEXT, false, true, true))
 	if item.has_skill():
 		v.add_child(_skill_tag(item, 12))
+	if owner_name != "":
+		v.add_child(_label(owner_name + " 장착", 11, S.MUTED, false, false, true))
 	if dim:
 		card.modulate = Color(1, 1, 1, 0.35)
 	return card
@@ -471,13 +477,20 @@ func _add_unit_editor() -> void:
 	var flow := HFlowContainer.new()
 	flow.add_theme_constant_override("h_separation", 6)
 	flow.add_theme_constant_override("v_separation", 6)
-	if state.inventory.is_empty():
+	var others := state.items_on_other_units(inspect_unit)
+	if state.inventory.is_empty() and others.is_empty():
 		flow.add_child(_label("보유 아이템 없음", 15, S.MUTED))
 	var items := state.inventory.duplicate()
 	items.sort_custom(func(a: Item, b: Item) -> bool: return int(state.fits_in(a, inspect_unit)) > int(state.fits_in(b, inspect_unit)))
 	for item: Item in items:
 		var fits := state.fits_in(item, inspect_unit)
 		flow.add_child(_list_item_card(item, not fits, fits and not battling, _on_inventory_pressed.bind(item), cell))
+	# 다른 유닛이 장착 중인 아이템: 흐리게. 끌어 넣으면 옮길지 묻는다.
+	others.sort_custom(func(a: Array, b: Array) -> bool: return int(state.fits_in(a[0], inspect_unit)) > int(state.fits_in(b[0], inspect_unit)))
+	for e: Array in others:
+		var item: Item = e[0]
+		var fits := state.fits_in(item, inspect_unit)
+		flow.add_child(_list_item_card(item, true, fits and not battling, _on_inventory_pressed.bind(item), cell, state.units[e[1]].display_name()))
 	lv.add_child(flow)
 	zone.add_child(lv)
 	var left_w := maxf(200.0, pack.width * cell + 24.0)
@@ -759,12 +772,84 @@ func _on_cell_pressed(unit_index: int, cell: Vector2i) -> void:
 func _on_item_dropped(unit_index: int, item: Item, anchor: Vector2i) -> void:
 	if battling:
 		return
+	if state.is_taken_from_other(item, unit_index) and state.can_equip_flexible(item, unit_index, anchor):
+		# 다른 유닛이 장착 중: 옮길지 먼저 묻는다
+		pending_move = {"item": item, "unit": unit_index, "anchor": anchor}
+		refresh()
+		return
 	if state.equip_flexible(item, unit_index, anchor):
 		selected = null
 		message = ""
 	else:
 		message = "그 자리에는 들어가지 않습니다."
 	refresh()
+
+
+func _on_confirm_move() -> void:
+	var m := pending_move
+	pending_move = {}
+	if m.is_empty() or battling:
+		refresh()
+		return
+	if state.equip_flexible(m["item"], m["unit"], m["anchor"]):
+		selected = null
+		message = ""
+	else:
+		message = "그 자리에는 들어가지 않습니다."
+	refresh()
+
+
+func _on_cancel_move() -> void:
+	pending_move = {}
+	refresh()
+
+
+## 옮기기 확인 창: 화면 전체를 덮고(밖을 누르면 취소) 가운데에 묻는다
+func _update_confirm() -> void:
+	if _confirm_layer != null:
+		remove_child(_confirm_layer)
+		_confirm_layer.queue_free()
+		_confirm_layer = null
+	if pending_move.is_empty():
+		return
+	var item: Item = pending_move["item"]
+	var from := state.unit_of(item)
+	if from < 0 or int(pending_move["unit"]) >= state.units.size():
+		pending_move = {}
+		return
+	var layer := ColorRect.new()
+	layer.color = Color(0.02, 0.03, 0.06, 0.55)
+	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.gui_input.connect(func(ev: InputEvent) -> void:
+		var mb := ev as InputEventMouseButton
+		if mb != null and mb.button_index == MOUSE_BUTTON_LEFT and not mb.pressed:
+			_on_cancel_move.call_deferred())
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(center)
+	var panel := _banner(S.GOLD)
+	panel.custom_minimum_size = Vector2(560, 0)
+	var box: VBoxContainer = panel.get_child(0)
+	box.add_child(_label("아이템 옮기기", 28, S.GOLD, false, true, true))
+	box.add_child(_center(ShapeIcon.for_item(item, 18.0)))
+	box.add_child(_label("%s 가방의 %s을(를)\n%s 가방으로 옮길까요?" % [
+		state.units[from].display_name(), item.display_name(), state.units[pending_move["unit"]].display_name()], 20, S.TEXT, true, false, true))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var cancel := _button("취소", _on_cancel_move)
+	cancel.custom_minimum_size = Vector2(180, 64)
+	row.add_child(cancel)
+	var ok := _button("옮기기", _on_confirm_move)
+	ok.theme_type_variation = "PrimaryButton"
+	ok.custom_minimum_size = Vector2(180, 64)
+	row.add_child(ok)
+	box.add_child(row)
+	center.add_child(panel)
+	add_child(layer)
+	_confirm_layer = layer
 
 
 ## 가방 아이템을 목록으로 끌어 놓음 → 빼기
@@ -971,6 +1056,10 @@ func _setup_demo(kind: String) -> void:
 	if kind == "units":
 		inspect_unit = 1
 		selected = state.inventory[0]
+		# move=1 : 다른 유닛(궁수)의 단검을 옮길지 묻는 창 (스크린샷용)
+		if OS.get_cmdline_user_args().has("move=1"):
+			selected = null
+			pending_move = {"item": state.units[2].items()[0], "unit": 1, "anchor": Vector2i(0, 0)}
 	elif kind == "enemy":
 		inspect_enemy = 0
 	elif kind == "battle":

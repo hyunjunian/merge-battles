@@ -292,3 +292,18 @@ func test_interest_per_ten_gold() -> void:
 	check_eq(s["interest"], 2, "전투 끝에 가진 23원 → 이자 2원")
 	check_eq(s["income"], GameState.income_for(s["streak"]) + 2, "수입에 이자 포함")
 	check_eq(gs.gold, 23 + s["income"])
+
+
+func test_items_on_other_units() -> void:
+	var gs := GameState.new(5)
+	var second := Backpack.new("soldier")
+	gs._deploy(second)
+	var dagger := Item.new("dagger")
+	gs.inventory.append(dagger)
+	gs.equip(dagger, 1, Vector2i(0, 0))
+	check_eq(gs.items_on_other_units(0), [[dagger, 1]])
+	check(gs.items_on_other_units(1).is_empty())
+	check(gs.is_taken_from_other(dagger, 0), "유닛 1 → 0 은 옮기기")
+	check(not gs.is_taken_from_other(dagger, 1), "같은 가방 안 이동은 아님")
+	check(gs.equip_flexible(dagger, 0, Vector2i(0, 0)))
+	check_eq(gs.unit_of(dagger), 0)

@@ -359,3 +359,27 @@ func test_reroll_enemy_from_scouting() -> void:
 	check_eq(state.enemy_reroll_count(), count + 1)
 	check_eq(main.inspect_enemy, 0, "새 상대 첫 유닛 정찰")
 	free_later(main)
+
+
+func test_move_item_from_other_unit_asks_first() -> void:
+	var main := _spawn()
+	var state: GameState = main.state
+	var second := Backpack.new("soldier")
+	state._deploy(second)
+	var dagger := Item.new("dagger")
+	state.inventory.append(dagger)
+	check(state.equip(dagger, 1, Vector2i(0, 0)))
+	main._on_field_tapped("a", 0)
+	check_eq(state.items_on_other_units(0).size(), 1, "다른 유닛 아이템도 목록에")
+	main._on_item_dropped(0, dagger, Vector2i(0, 0))
+	check_eq(state.unit_of(dagger), 1, "확인 전엔 그대로")
+	check(not main.pending_move.is_empty() and main._confirm_layer != null, "옮길지 묻는 창")
+	main._on_cancel_move()
+	check(main.pending_move.is_empty() and main._confirm_layer == null, "취소하면 창 닫힘")
+	check_eq(state.unit_of(dagger), 1, "취소하면 그대로")
+	main._on_item_dropped(0, dagger, Vector2i(0, 0))
+	main._on_confirm_move()
+	check_eq(state.unit_of(dagger), 0, "확인하면 옮겨짐")
+	check(not second.has_item(dagger), "원래 유닛에서 빠짐")
+	check(main._confirm_layer == null)
+	free_later(main)

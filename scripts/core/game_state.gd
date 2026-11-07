@@ -266,6 +266,23 @@ func fits_in(item: Item, unit_idx: int) -> bool:
 	return pack.find_spot(probe) != Backpack.NO_SPOT
 
 
+## 다른 유닛이 장착 중인 아이템을 이 유닛으로 옮기려 하는가 (옮기기 전에 확인을 받는다)
+func is_taken_from_other(item: Item, unit_idx: int) -> bool:
+	var current := unit_of(item)
+	return current >= 0 and current != unit_idx
+
+
+## 다른 유닛들이 장착 중인 아이템: [[아이템, 유닛 번호], ...]
+func items_on_other_units(unit_idx: int) -> Array:
+	var out: Array = []
+	for i in units.size():
+		if i == unit_idx:
+			continue
+		for item in units[i].items():
+			out.append([item, i])
+	return out
+
+
 ## 보유함 → 가방, 또는 가방 → 다른 자리/다른 가방.
 func equip(item: Item, unit_idx: int, pos: Vector2i) -> bool:
 	if not can_equip(item, unit_idx, pos):
