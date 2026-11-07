@@ -16,14 +16,14 @@ func setup(p_pack: Backpack, p_unit_index: int, p_cell_size: float = 52.0, p_int
 	unit_index = p_unit_index
 	cell_size = p_cell_size
 	interactive = p_interactive
-	custom_minimum_size = Vector2(Backpack.WIDTH, Backpack.HEIGHT) * cell_size
+	custom_minimum_size = Vector2(p_pack.width, p_pack.height) * cell_size
 	mouse_filter = Control.MOUSE_FILTER_STOP if interactive else Control.MOUSE_FILTER_IGNORE
 	queue_redraw()
 
 
 func cell_at(local_pos: Vector2) -> Vector2i:
 	var c := Vector2i(floori(local_pos.x / cell_size), floori(local_pos.y / cell_size))
-	if c.x < 0 or c.y < 0 or c.x >= Backpack.WIDTH or c.y >= Backpack.HEIGHT:
+	if c.x < 0 or c.y < 0 or c.x >= pack.width or c.y >= pack.height:
 		return Backpack.NO_SPOT
 	return c
 
@@ -44,8 +44,8 @@ func _draw() -> void:
 		return
 	var font := get_theme_default_font()
 	var gap := 2.0
-	for y in Backpack.HEIGHT:
-		for x in Backpack.WIDTH:
+	for y in pack.height:
+		for x in pack.width:
 			var r := Rect2(Vector2(x, y) * cell_size, Vector2.ONE * cell_size).grow(-gap)
 			draw_rect(r, Color(0.16, 0.14, 0.12))
 			draw_rect(r, Color(0.35, 0.30, 0.24), false, 1.0)
@@ -71,4 +71,3 @@ func _draw() -> void:
 		var fs := int(cell_size * 0.30)
 		var short_name: String = String(item.def().get("name", "?")).substr(0, 2)
 		draw_string(font, origin + Vector2(0, fs), short_name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
-		draw_string(font, origin + Vector2(0, fs * 2.1), "★".repeat(item.tier), HORIZONTAL_ALIGNMENT_LEFT, -1, int(fs * 0.8), Color(1, 0.9, 0.4))

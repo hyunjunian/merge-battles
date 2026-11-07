@@ -3,7 +3,7 @@ extends "res://tests/test_case.gd"
 
 
 func _pack(ids: Array) -> Backpack:
-	var pack := Backpack.new()
+	var pack := Backpack.new("", 3, 4)
 	for id: String in ids:
 		var item := Item.new(id)
 		pack.place(item, pack.find_spot(item))
@@ -24,18 +24,27 @@ func test_synergy_levels() -> void:
 
 func test_unit_stats_apply_items_and_bonus() -> void:
 	var s := BattleSim.unit_stats(_pack(["sword", "buckler"]), {"atk_mult": 0.2, "armor": 2.0})
-	check_eq(s["hp"], BattleSim.BASE_HP + 10.0)
+	check_eq(s["hp"], BattleSim.BASE_HP + 15.0)
 	check_eq(s["atk"], (BattleSim.BASE_ATK + 5.0) * 1.2)
 	check_eq(s["armor"], 3.0)
 
 
-func test_empty_packs_do_not_fight() -> void:
-	var packs: Array[Backpack] = [Backpack.new(), _pack(["sword"]), Backpack.new()]
-	var team := BattleSim.team_stats(packs)
-	check_eq(team.size(), 1)
-	check_eq(team[0]["slot"], 1, "자리 번호 유지")
-	var r := BattleSim.simulate(team, [BattleSim.unit_stats(_pack(["apple"]))] as Array[Dictionary])
-	check_eq(BattleSim.frame_pos(r["frames"][0], 0, 0), BattleSim.start_position("a", 1, 3), "자리 기준 시작 위치")
+func test_unit_type_gives_base_stats() -> void:
+	var soldier := Backpack.new("soldier")
+	var base := BattleSim.unit_stats(soldier)
+	check_eq(base["hp"], 70.0, "병사 기본 체력")
+	soldier.place(Item.new("sword"), Vector2i(0, 0))
+	check_eq(BattleSim.unit_stats(soldier)["atk"], 4.0 + 5.0, "아이템이 능력치를 바꿈")
+	check(BattleSim.is_ranged(BattleSim.unit_stats(Backpack.new("archer"))), "궁수는 기본 원거리")
+
+
+func test_team_stats_use_slot_positions() -> void:
+	var a := Backpack.new("recruit")
+	a.slot = 4
+	var team := BattleSim.team_stats([a] as Array[Backpack], "b")
+	check_eq(team[0]["pos"], BattleSim.slot_position("b", 4))
+	check(BattleSim.slot_position("a", 4).y > 0.0 and BattleSim.slot_position("b", 4).y < 0.0, "양 팀은 반대편")
+	check(absf(BattleSim.slot_position("a", 4).y) > absf(BattleSim.slot_position("a", 1).y), "3~5 는 뒷줄")
 
 
 func test_damage_floor() -> void:

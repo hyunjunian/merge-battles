@@ -1,31 +1,37 @@
 extends Control
 ## 메인 장면. 3D 전장이 화면 전체에 깔려 있고, 그 위에 UI 가 자리마다 겹쳐 있다.
-##   위: 상태 HUD (골드·예산·시너지)
+##   위: 상태 HUD (라운드·체력·골드·연승/연패·최고 기록·시너지)
 ##   아래: 시트 (유닛 편성 / 적 상세 / 상점). 접을 수 있고, 열리면 전장 카메라가 위쪽으로 물러난다.
-##   맨 아래: 행동 버튼. 가운데: 전투 결과 팝업.
-##   전장 위쪽은 다음 상대 (탭하면 상세 전력), 아래쪽은 우리 유닛 자리 3개 (탭하면 그 유닛 편성).
-##   전투 시작: 같은 전장에서 전투를 재생하고, 끝나면 다음 상대가 다시 선다.
-## 게임 규칙은 scripts/core/ 에 있고, 여기서는 입력을 GameState 에 넘기고 결과를 보여 주기만 한다.
+##   맨 아래: 행동 버튼. 가운데: 전투 결과·게임 오버 팝업.
+##   전장 위쪽은 이번 라운드 상대 (탭하면 상세 전력), 아래쪽은 우리 유닛 (탭하면 그 유닛 편성).
+## 게임 규칙은 scripts/core/ (GameState) 에 있고, 여기서는 입력을 넘기고 결과를 보여 주기만 한다.
 ##
-## 스크린샷용 데모: 실행 인자 demo=camp | demo=prep | demo=enemy | demo=battle (t=<초>)
+## 스크린샷용 데모: 실행 인자 demo=start | demo=shop | demo=enemy | demo=battle (t=<초>) | demo=result | demo=gameover
 
 const PANEL := Color(0.18, 0.16, 0.14)
 const ACCENT := Color(0.95, 0.75, 0.30)
 const ENEMY := Color(1.0, 0.55, 0.5)
+const SHEET_OPEN_HEIGHT := 568.0
+const SHEET_CLOSED_HEIGHT := 64.0
+const SHEET_BOTTOM := 112.0
 
 var state: GameState
+var records: Dictionary = {}
+## 기록을 저장할 파일 (테스트는 다른 경로를 쓴다)
+var records_path: String = Records.DEFAULT_PATH
 var selected: Item = null
 var message: String = ""
-## 편성 중인 우리 유닛 번호
+## 편성 중인 우리 유닛 번호 (state.units 의 인덱스)
 var active_unit: int = 0
 ## 상세 보기 중인 적 번호 (-1 이면 편성 패널)
 var inspect_enemy: int = -1
 var battling: bool = false
+var last_result: Dictionary = {}
+## 전투가 끝난 뒤 보여 줄 GameState.apply_result() 요약
+var summary: Dictionary = {}
 ## 아래 시트가 펼쳐져 있는가
 var sheet_open: bool = true
 var _laid_out: bool = false
-var last_result: Dictionary = {}
-var _result_info: Dictionary = {}  # 전투가 끝난 뒤 보여 줄 {won, reward}
 
 ## 화면 제목 (테스트에서 확인한다)
 @onready var title: Label = $Title
@@ -44,13 +50,9 @@ static func clamp_score(score: int) -> int:
 	return clampi(score, 0, 999_999)
 
 
-## 유닛 대표 색: 가방에서 가장 비싼 아이템 색.
+## 유닛 대표 색: 유닛 종류 색
 static func unit_color(pack: Backpack) -> Color:
-	var best: Item = null
-	for item in pack.items():
-		if best == null or item.cost() > best.cost():
-			best = item
-	return best.color() if best != null else Color.GRAY
+	return pack.color()
 
 
 static func stats_line(s: Dictionary) -> String:
@@ -65,55 +67,76 @@ static func dps(s: Dictionary) -> float:
 	return float(s["atk"]) * float(s["spd"])
 
 
-## 전장 미리보기 명단: 우리 쪽은 자리 3개(빈자리 포함), 상대는 생성된 유닛.
-static func roster(packs: Array[Backpack], side: String, label_fmt: String, keep_empty: bool) -> Array[Dictionary]:
+static func streak_text(streak: int) -> String:
+	if streak >= 2:
+		return "%d연승" % streak
+	if streak <= -2:
+		return "%d연패" % -streak
+	return ""
+
+
+## 전장 미리보기 명단 (유닛 자리 기준)
+static func roster(packs: Array[Backpack], side: String) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	var bonus := Synergy.bonuses(Synergy.count_tags(packs))
-	for i in packs.size():
-		var pack := packs[i]
-		if pack.is_empty() and not keep_empty:
-			continue
+	for pack in packs:
 		out.append({
-			"pos": BattleSim.start_position(side, i, packs.size()),
+			"pos": BattleSim.slot_position(side, pack.slot),
 			"color": unit_color(pack),
 			"ranged": BattleSim.is_ranged(BattleSim.unit_stats(pack, bonus)),
-			"empty": pack.is_empty(),
-			"label": label_fmt % (i + 1),
+			"empty": false,
+			"label": pack.display_name(),
 		})
 	return out
 
 
+## 가방 칸 크기: 큰 유닛도 시트 안에 들어가게
+static func cell_size_for(pack: Backpack) -> float:
+	return minf(56.0, minf(224.0 / pack.height, 200.0 / pack.width))
+
+
 func _ready() -> void:
-	state = GameState.new()
 	battle_view.unit_tapped.connect(_on_field_tapped)
 	battle_view.finished.connect(_on_battle_finished)
 	var demo := _demo_arg()
 	if demo != "":
 		_setup_demo(demo)
 	else:
-		refresh()
+		new_run()
+
+
+func new_run(seed_value: int = 0) -> void:
+	state = GameState.new(seed_value)
+	records = Records.load_records(records_path)
+	selected = null
+	message = ""
+	active_unit = 0
+	inspect_enemy = -1
+	battling = false
+	summary = {}
+	sheet_open = true
+	refresh()
 
 
 # ── 화면 구성 ─────────────────────────────────────────
-
-const SHEET_OPEN_HEIGHT := 568.0
-const SHEET_CLOSED_HEIGHT := 64.0
-const SHEET_BOTTOM := 112.0
-
 
 func refresh() -> void:
 	_clear(content)
 	_clear(sheet_head)
 	_clear(action_bar)
 	_clear(popup)
+	active_unit = clampi(active_unit, 0, maxi(0, state.units.size() - 1))
 	_build_header()
 	if battling:
 		_layout_sheet(false, false)
 		action_bar.add_child(_big_button("건너뛰기", _on_skip))
 		return
-	if not _result_info.is_empty():
+	if not summary.is_empty():
 		_layout_sheet(false, false)
-		_add_result_panel()
+		if summary.get("game_over", false):
+			_add_game_over_panel()
+		else:
+			_add_result_panel()
 		return
 	_layout_sheet(true, sheet_open)
 	_build_sheet_head()
@@ -124,11 +147,12 @@ func refresh() -> void:
 		_add_unit_editor()
 		_add_inventory()
 		_add_selection_panel()
-		if state.phase == GameState.Phase.CAMP:
-			_add_shop()
+		_add_shop()
 	if message != "":
-		content.add_child(_label(message, 20, Color(1, 0.6, 0.5), true))
-	_add_main_actions()
+		content.add_child(_label(message, 18, Color(1, 0.6, 0.5), true))
+	var fight := _big_button("전투 시작 · 라운드 %d" % state.round_no, _on_fight)
+	fight.disabled = not state.can_fight()
+	action_bar.add_child(fight)
 
 
 ## 시트 보이기/펼치기와 카메라 구도를 맞춘다.
@@ -143,9 +167,7 @@ func _layout_sheet(show: bool, expanded: bool) -> void:
 
 
 func _build_sheet_head() -> void:
-	var text := "적 %d 상세 전력" % (inspect_enemy + 1) if inspect_enemy >= 0 else "유닛 %d 편성" % (active_unit + 1)
-	if state.phase == GameState.Phase.CAMP and inspect_enemy < 0:
-		text += " · 상점"
+	var text := "적 %d 상세 전력" % (inspect_enemy + 1) if inspect_enemy >= 0 else "편성 · 상점"
 	sheet_head.add_child(_label(text, 20, ENEMY if inspect_enemy >= 0 else ACCENT))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -161,19 +183,16 @@ func _clear(box: Node) -> void:
 
 func _build_header() -> void:
 	_clear(header)
-	if battling:
-		title.text = "라운드 %d 전투" % state.round_no
-	elif state.phase == GameState.Phase.CAMP:
-		title.text = "베이스 캠프 · 다음 상대: 라운드 %d" % state.round_no
-	else:
-		title.text = "원정 · 라운드 %d" % state.round_no
+	title.text = ("라운드 %d 전투" if battling else "라운드 %d") % state.round_no
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 20)
+	row.add_theme_constant_override("separation", 18)
+	var hp_col := Color(0.5, 0.9, 0.5) if state.hp > 50 else (ACCENT if state.hp > 25 else Color(1, 0.4, 0.35))
+	row.add_child(_label("체력 %d" % state.hp, 22, hp_col))
 	row.add_child(_label("골드 %d" % state.gold, 22, ACCENT))
-	var over := state.used_budget() > state.budget()
-	row.add_child(_label("예산 %d / %d" % [state.used_budget(), state.budget()], 22, Color.RED if over else Color.WHITE))
-	if state.best_round > 0:
-		row.add_child(_label("최고 라운드 %d" % state.best_round, 18, Color(1, 1, 1, 0.6)))
+	var st := streak_text(state.streak)
+	if st != "":
+		row.add_child(_label(st, 20, Color(0.6, 0.85, 1.0) if state.streak > 0 else ENEMY))
+	row.add_child(_label("최고 라운드 %d" % records.get("best_round", 0), 17, Color(1, 1, 1, 0.55)))
 	header.add_child(row)
 	var counts := Synergy.count_tags(state.units)
 	var chips := HFlowContainer.new()
@@ -188,56 +207,59 @@ func _build_header() -> void:
 	header.add_child(chips)
 
 
-## 전장 미리보기: 우리 자리 3개 + 다음 상대
+## 전장 미리보기: 우리 유닛 + 이번 라운드 상대
 func _refresh_field() -> void:
-	battle_view.show_preview(roster(state.units, "a", "유닛 %d", true), roster(state.enemy_team(), "b", "적 %d", false))
+	battle_view.show_preview(roster(state.units, "a"), roster(state.enemy_team(), "b"))
 	if inspect_enemy >= 0:
 		battle_view.set_highlight("b", inspect_enemy)
-	else:
+	elif not state.units.is_empty():
 		battle_view.set_highlight("a", active_unit)
 
 
 func _add_unit_editor() -> void:
-	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 6)
+	if state.units.is_empty():
+		content.add_child(_label("전장에 유닛이 없습니다. 아래 상점에서 유닛을 사세요.", 18, Color(1, 1, 1, 0.75), true))
+		return
+	var tabs := HFlowContainer.new()
+	tabs.add_theme_constant_override("h_separation", 6)
+	tabs.add_theme_constant_override("v_separation", 6)
 	for i in state.units.size():
-		var b := _button("유닛 %d (%d)" % [i + 1, state.units[i].total_cost()], _on_unit_tab.bind(i))
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var u := state.units[i]
+		var b := _button("%s %dx%d" % [u.display_name(), u.width, u.height], _on_unit_tab.bind(i))
+		b.custom_minimum_size = Vector2(150, 44)
 		if i == active_unit:
 			b.add_theme_color_override("font_color", ACCENT)
 			b.add_theme_color_override("font_hover_color", ACCENT)
 		tabs.add_child(b)
 	content.add_child(tabs)
+	var pack := state.units[active_unit]
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
-	var pack := state.units[active_unit]
 	var view := BackpackView.new()
-	view.setup(pack, active_unit, 56.0)
+	view.setup(pack, active_unit, cell_size_for(pack))
 	view.selected = selected
 	view.cell_pressed.connect(_on_cell_pressed)
 	row.add_child(view)
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_child(_label("유닛 %d 가방" % (active_unit + 1), 20, ACCENT))
-	if pack.is_empty():
-		info.add_child(_label("비어 있어 출전하지 않습니다.\n아래 보유 아이템을 고른 뒤 가방 칸을 누르세요.", 16, Color(1, 1, 1, 0.65), true))
-	else:
-		var s := BattleSim.unit_stats(pack, Synergy.bonuses(Synergy.count_tags(state.units)))
-		info.add_child(_label(stats_line(s), 16, Color(1, 1, 1, 0.85), true))
-		info.add_child(_label("초당 피해 %.1f" % dps(s), 16, Color(1, 1, 1, 0.6)))
+	info.add_child(_label("%s (%dx%d 가방)" % [pack.display_name(), pack.width, pack.height], 20, ACCENT, true))
+	var s := BattleSim.unit_stats(pack, Synergy.bonuses(Synergy.count_tags(state.units)))
+	info.add_child(_label(stats_line(s), 16, Color(1, 1, 1, 0.85), true))
+	info.add_child(_label("초당 피해 %.1f · 가치 %d원" % [dps(s), pack.total_value()], 15, Color(1, 1, 1, 0.6), true))
+	info.add_child(_button("유닛 판매 +%d원" % pack.sell_price(), _on_sell_unit))
 	row.add_child(info)
 	content.add_child(row)
 
 
 func _add_inventory() -> void:
-	content.add_child(_label("보유 아이템", 18, Color(1, 1, 1, 0.6)))
+	content.add_child(_label("보유 아이템 (고른 뒤 가방 칸을 누르면 넣기)", 16, Color(1, 1, 1, 0.6)))
 	var flow := HFlowContainer.new()
 	flow.add_theme_constant_override("h_separation", 6)
 	flow.add_theme_constant_override("v_separation", 6)
 	if state.inventory.is_empty():
-		flow.add_child(_label("(없음)", 18, Color(1, 1, 1, 0.4)))
+		flow.add_child(_label("(없음)", 16, Color(1, 1, 1, 0.4)))
 	for item in state.inventory:
-		var b := _item_button(item, "%s\n비용 %d" % [item.display_name(), item.cost()])
+		var b := _color_button(item.color(), "%s %dx%d" % [item.display_name(), item.size().x, item.size().y], item == selected)
 		b.pressed.connect(_on_inventory_pressed.bind(item))
 		flow.add_child(b)
 	content.add_child(flow)
@@ -251,8 +273,8 @@ func _add_selection_panel() -> void:
 	panel.add_child(box)
 	var tag_name: String = Synergy.TRAITS[selected.tag()]["name"]
 	var where := state.unit_of(selected)
-	var place := "보유함" if where < 0 else "유닛 %d 가방" % (where + 1)
-	box.add_child(_label("%s  [%s] · 비용 %d · %s" % [selected.display_name(), tag_name, selected.cost(), place], 18, ACCENT, true))
+	var place := "보유함" if where < 0 else "%s 가방" % state.units[where].display_name()
+	box.add_child(_label("%s [%s] · %d원 · %s" % [selected.display_name(), tag_name, selected.cost(), place], 18, ACCENT, true))
 	box.add_child(_label(selected.describe(), 16, Color.WHITE, true))
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 6)
@@ -260,11 +282,7 @@ func _add_selection_panel() -> void:
 		actions.add_child(_button("회전", _on_rotate))
 	if where >= 0:
 		actions.add_child(_button("빼기", _on_unequip))
-	if state.phase == GameState.Phase.CAMP:
-		var merge_btn := _button("합성 ★%d" % (selected.tier + 1), _on_merge)
-		merge_btn.disabled = state.merge_partner(selected) == null
-		actions.add_child(merge_btn)
-		actions.add_child(_button("판매 +%d" % selected.sell_price(), _on_sell))
+	actions.add_child(_button("판매 +%d원" % selected.sell_price(), _on_sell_item))
 	actions.add_child(_button("닫기", _on_deselect))
 	box.add_child(actions)
 	content.add_child(panel)
@@ -276,23 +294,37 @@ func _add_shop() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(spacer)
-	var reroll := _button("새로고침 (%d골드)" % GameState.REROLL_COST, _on_reroll)
+	var reroll := _button("새로고침 (%d원)" % GameState.REROLL_COST, _on_reroll)
 	reroll.disabled = state.gold < GameState.REROLL_COST
 	head.add_child(reroll)
 	content.add_child(head)
-	var row := HFlowContainer.new()
-	row.add_theme_constant_override("h_separation", 6)
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 6)
+	flow.add_theme_constant_override("v_separation", 6)
 	for i in state.shop.size():
-		var item := state.shop[i]
-		var b := _item_button(item, "%s\n%d골드" % [item.display_name(), item.cost()])
-		b.tooltip_text = item.describe()
-		b.disabled = state.gold < item.cost()
+		var offer := state.shop[i]
+		if offer.is_empty():
+			var sold := _color_button(Color(0.2, 0.2, 0.2), "판매됨", false)
+			sold.disabled = true
+			flow.add_child(sold)
+			continue
+		var b: Button
+		if offer["kind"] == "unit":
+			var d := UnitDB.get_def(offer["id"])
+			var sz: Vector2i = d["size"]
+			b = _color_button(d["color"], "유닛 %s %dx%d\n%d원" % [d["name"], sz.x, sz.y, d["cost"]], false)
+			b.tooltip_text = Pricing.describe_stats(d["stats"], float(d["stats"].get("range", 0.0)))
+		else:
+			var item := Item.new(offer["id"])
+			b = _color_button(item.color(), "%s %dx%d\n%d원" % [item.display_name(), item.size().x, item.size().y, item.cost()], false)
+			b.tooltip_text = item.describe()
+		b.disabled = state.buy_block_reason(i) != ""
 		b.pressed.connect(_on_buy.bind(i))
-		row.add_child(b)
-	content.add_child(row)
+		flow.add_child(b)
+	content.add_child(flow)
 
 
-## 적 상세 전력: 능력치, 가방, 아이템 목록, 팀 시너지
+## 적 상세 전력: 유닛 종류, 능력치, 가방, 아이템 목록, 팀 시너지
 func _add_enemy_detail() -> void:
 	var enemies := state.enemy_team()
 	if inspect_enemy >= enemies.size():
@@ -303,21 +335,21 @@ func _add_enemy_detail() -> void:
 	var counts := Synergy.count_tags(enemies)
 	var s := BattleSim.unit_stats(pack, Synergy.bonuses(counts))
 	var head := HBoxContainer.new()
-	head.add_child(_label("라운드 %d 상대" % state.round_no, 18, Color(1, 1, 1, 0.6)))
+	head.add_child(_label("%s (%dx%d) · 라운드 %d 상대" % [pack.display_name(), pack.width, pack.height, state.round_no], 18, Color(1, 1, 1, 0.75)))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(spacer)
-	head.add_child(_button("편성으로 돌아가기", _on_close_enemy))
+	head.add_child(_button("편성으로", _on_close_enemy))
 	content.add_child(head)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
 	var view := BackpackView.new()
-	view.setup(pack, inspect_enemy, 52.0, false)
+	view.setup(pack, inspect_enemy, cell_size_for(pack), false)
 	row.add_child(view)
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.add_child(_label(stats_line(s), 17, Color.WHITE, true))
-	info.add_child(_label("초당 피해 %.1f · 아이템 가치 %d" % [dps(s), pack.total_cost()], 16, Color(1, 1, 1, 0.65), true))
+	info.add_child(_label("초당 피해 %.1f · 가치 %d원" % [dps(s), pack.total_value()], 16, Color(1, 1, 1, 0.65), true))
 	var syn: PackedStringArray = []
 	for tag in Synergy.TAG_ORDER:
 		if Synergy.level(tag, counts[tag]) > 0:
@@ -328,38 +360,43 @@ func _add_enemy_detail() -> void:
 	for item in pack.items():
 		var tag_name: String = Synergy.TRAITS[item.tag()]["name"]
 		content.add_child(_label("· %s [%s] — %s" % [item.display_name(), tag_name, item.describe()], 16, Color(1, 1, 1, 0.85), true))
-	var total := 0
-	for p in enemies:
-		total += p.total_cost()
-	content.add_child(_label("상대 팀 전체: 유닛 %d · 아이템 가치 %d (우리 예산 %d)" % [enemies.size(), total, state.budget()], 15, Color(1, 1, 1, 0.55), true))
-
-
-func _add_main_actions() -> void:
-	if state.phase == GameState.Phase.CAMP:
-		var go := _big_button("출정 → 라운드 %d" % state.round_no, _on_depart)
-		go.disabled = not state.has_team()
-		action_bar.add_child(go)
-	else:
-		action_bar.add_child(_big_button("캠프로", _on_return_camp, false))
-		var fight := _big_button("전투 시작", _on_fight)
-		fight.disabled = not state.has_team() or state.used_budget() > state.budget()
-		action_bar.add_child(fight)
+	content.add_child(_label("상대 팀 전체: 유닛 %d · 총가치 %d원 · 지면 최대 체력 -%d" % [
+		enemies.size(), EnemyGen.total_value(enemies), GameState.hp_loss_for(enemies.size())], 15, Color(1, 1, 1, 0.55), true))
 
 
 func _add_result_panel() -> void:
-	var won: bool = _result_info["won"]
-	var panel := _panel(Color(0.20, 0.30, 0.18) if won else Color(0.35, 0.16, 0.14))
+	var won: bool = summary["won"]
+	var panel := _panel(Color(0.20, 0.30, 0.18, 0.95) if won else Color(0.35, 0.16, 0.14, 0.95), 18)
+	panel.custom_minimum_size = Vector2(540, 0)
 	var box := VBoxContainer.new()
-	panel.add_child(box)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_child(_label("승리!" if won else "패배…", 44, ACCENT if won else ENEMY))
-	if won:
-		box.add_child(_label("골드 +%d · 다음은 라운드 %d (예산 %d)" % [_result_info["reward"], state.round_no, state.budget()], 20, Color.WHITE, true))
-	else:
-		box.add_child(_label("골드 +%d · 베이스 캠프로 돌아가 정비합니다" % _result_info["reward"], 20, Color.WHITE, true))
-	panel.custom_minimum_size = Vector2(520, 0)
+	panel.add_child(box)
+	box.add_child(_label("라운드 %d %s" % [summary["round_played"], "승리!" if won else "패배…"], 40, ACCENT if won else ENEMY))
+	if not won:
+		box.add_child(_label("체력 -%d (살아남은 적 %d) → %d" % [summary["hp_loss"], summary["survivors"], state.hp], 22, Color.WHITE, true))
+	var income_text := "골드 +%d" % summary["income"]
+	if summary["bonus"] > 0:
+		income_text += " (기본 %d + %s 보너스 %d)" % [GameState.BASE_INCOME, streak_text(summary["streak"]), summary["bonus"]]
+	box.add_child(_label(income_text, 22, ACCENT, true))
 	popup.add_child(panel)
-	action_bar.add_child(_big_button("다음 라운드 준비" if won else "베이스 캠프로", _on_continue))
+	action_bar.add_child(_big_button("다음 라운드 · %d" % state.round_no, _on_continue))
+
+
+func _add_game_over_panel() -> void:
+	var panel := _panel(Color(0.12, 0.10, 0.10, 0.95), 20)
+	panel.custom_minimum_size = Vector2(560, 0)
+	var box := VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	panel.add_child(box)
+	box.add_child(_label("게임 오버", 48, ENEMY))
+	box.add_child(_label("라운드 %d 까지 도달" % summary["round_played"], 28, Color.WHITE))
+	var best: int = records.get("best_round", 0)
+	var record_text := "최고 기록 라운드 %d · %d번째 판" % [best, records.get("runs", 0)]
+	if summary["round_played"] >= best:
+		record_text = "새 최고 기록! · %d번째 판" % records.get("runs", 0)
+	box.add_child(_label(record_text, 22, ACCENT))
+	popup.add_child(panel)
+	action_bar.add_child(_big_button("새로 시작", _on_new_run))
 
 
 # ── 입력 처리 ─────────────────────────────────────────
@@ -409,10 +446,8 @@ func _on_cell_pressed(unit_index: int, cell: Vector2i) -> void:
 		selected = null
 	elif at != null:
 		selected = at
-	elif not pack.can_place(selected, cell):
-		message = "그 자리에는 들어가지 않습니다. (회전해 보세요)"
 	else:
-		message = "예산이 부족합니다. (%d / %d)" % [state.used_budget(), state.budget()]
+		message = "그 자리에는 들어가지 않습니다. (회전해 보세요)"
 	refresh()
 
 
@@ -428,18 +463,18 @@ func _on_unequip() -> void:
 	refresh()
 
 
-func _on_merge() -> void:
-	if selected != null:
-		var merged := state.merge(selected)
-		if merged != null:
-			selected = merged
-			message = "%s 합성 완료!" % merged.display_name()
+func _on_sell_item() -> void:
+	if selected != null and state.sell_item(selected):
+		selected = null
 	refresh()
 
 
-func _on_sell() -> void:
-	if selected != null and state.sell(selected):
-		selected = null
+func _on_sell_unit() -> void:
+	if active_unit < state.units.size():
+		var pack := state.units[active_unit]
+		if state.sell_unit(pack):
+			message = "%s 판매 (+%d원). 가방 속 아이템은 보유함으로 돌아왔습니다." % [pack.display_name(), pack.sell_price()]
+			active_unit = 0
 	refresh()
 
 
@@ -449,8 +484,15 @@ func _on_deselect() -> void:
 
 
 func _on_buy(index: int) -> void:
-	state.buy(index)
-	message = ""
+	var offer := state.shop[index]
+	var reason := state.buy_block_reason(index)
+	if reason != "":
+		message = reason
+	elif state.buy(index):
+		message = ""
+		if offer["kind"] == "unit":
+			active_unit = state.units.size() - 1
+			inspect_enemy = -1
 	refresh()
 
 
@@ -459,32 +501,19 @@ func _on_reroll() -> void:
 	refresh()
 
 
-func _on_depart() -> void:
-	if state.start_expedition():
-		selected = null
-		message = ""
-	refresh()
-
-
-func _on_return_camp() -> void:
-	state.return_to_camp()
-	selected = null
-	message = ""
-	refresh()
-
-
 func _on_fight() -> void:
 	_start_battle(0.0)
 
 
 func _start_battle(start_time: float) -> void:
+	if not state.can_fight():
+		return
 	selected = null
 	message = ""
 	inspect_enemy = -1
 	var colors_a: Array[Color] = []
 	for u in state.units:
-		if not u.is_empty():
-			colors_a.append(unit_color(u))
+		colors_a.append(unit_color(u))
 	var colors_b: Array[Color] = []
 	for u in state.enemy_team():
 		colors_b.append(unit_color(u))
@@ -498,19 +527,23 @@ func _on_skip() -> void:
 	battle_view.skip()
 
 
-func _on_battle_finished(winner: String) -> void:
+func _on_battle_finished(_winner: String) -> void:
 	if not battling:
 		return
 	battling = false
-	var won := winner == "a"
-	var reward := state.apply_result(won)
-	_result_info = {"won": won, "reward": reward}
+	summary = state.apply_result(last_result)
+	if summary["game_over"]:
+		records = Records.submit(summary["round_played"], records_path)
 	refresh()
 
 
 func _on_continue() -> void:
-	_result_info = {}
+	summary = {}
 	refresh()
+
+
+func _on_new_run() -> void:
+	new_run()
 
 
 # ── 데모 (스크린샷) ───────────────────────────────────
@@ -523,30 +556,45 @@ func _demo_arg() -> String:
 
 
 func _setup_demo(kind: String) -> void:
-	state = GameState.new(7)
-	state.round_no = 3
-	state.inventory.clear()
-	# 유닛 1: 장검+버클러(근접), 유닛 2: 투구+사과(탱커), 유닛 3: 단궁(원거리)
-	var plan := [[0, "sword"], [0, "buckler"], [1, "helmet"], [1, "apple"], [2, "short_bow"]]
+	new_run(7)
+	if kind == "start":
+		return
+	# 4라운드쯤: 견습병(장검) + 병사(투구·사과) + 궁수(단검)
+	state.round_no = 4
+	state.gold = 6
+	state.hp = 76
+	state.streak = 2
+	state.units.append(Backpack.new("soldier"))
+	state.units[1].slot = 1
+	state.units.append(Backpack.new("archer"))
+	state.units[2].slot = 2
+	var plan := [[0, "sword"], [1, "helmet"], [1, "apple"], [2, "dagger"]]
 	for p: Array in plan:
 		var item := Item.new(p[1])
 		state.inventory.append(item)
 		state.equip(item, p[0], state.units[p[0]].find_spot(item))
-	state.inventory.append_array([Item.new("sword"), Item.new("mana_orb")])
-	selected = state.inventory[0]
-	if kind != "camp":
-		state.start_expedition()
-		selected = null
-	if kind == "enemy":
+	state.inventory.append_array([Item.new("club"), Item.new("herb_pouch")])
+	state.refill_shop()
+	active_unit = 1
+	if kind == "shop":
+		selected = state.inventory[0]
+	elif kind == "enemy":
 		inspect_enemy = 0
-	if kind == "battle":
+	elif kind == "battle":
 		var at := 3.0
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("t="):
 				at = a.substr(2).to_float()
 		_start_battle(at)
-	else:
-		refresh()
+		return
+	elif kind == "result":
+		last_result = state.fight()
+		summary = state.apply_result(last_result)
+	elif kind == "gameover":
+		state.hp = 1
+		summary = {"won": false, "hp_loss": 16, "survivors": 2, "streak": -3, "round_played": 9, "income": 0, "bonus": 0, "game_over": true}
+		records = {"best_round": 12, "runs": 5, "last_round": 9}
+	refresh()
 
 
 # ── 위젯 도우미 ───────────────────────────────────────
@@ -575,8 +623,8 @@ func _panel(color: Color, margin: int = 10) -> PanelContainer:
 func _button(text: String, on_press: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(0, 48)
-	b.add_theme_font_size_override("font_size", 18)
+	b.custom_minimum_size = Vector2(0, 46)
+	b.add_theme_font_size_override("font_size", 17)
 	b.pressed.connect(on_press)
 	return b
 
@@ -599,23 +647,24 @@ func _big_button(text: String, on_press: Callable, primary: bool = true) -> Butt
 	return b
 
 
-func _item_button(item: Item, text: String) -> Button:
+## 색 칩 버튼 (아이템·상점 진열)
+func _color_button(color: Color, text: String, is_selected: bool) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(130, 62)
-	b.add_theme_font_size_override("font_size", 16)
+	b.custom_minimum_size = Vector2(130, 60)
+	b.add_theme_font_size_override("font_size", 15)
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = item.color().darkened(0.25)
+	sb.bg_color = color.darkened(0.25)
 	sb.set_corner_radius_all(8)
-	if item == selected:
+	if is_selected:
 		sb.set_border_width_all(4)
 		sb.border_color = Color.WHITE
 	b.add_theme_stylebox_override("normal", sb)
 	var hover := sb.duplicate() as StyleBoxFlat
-	hover.bg_color = item.color()
+	hover.bg_color = color
 	b.add_theme_stylebox_override("hover", hover)
 	b.add_theme_stylebox_override("pressed", hover)
 	var dis := sb.duplicate() as StyleBoxFlat
-	dis.bg_color = item.color().darkened(0.7)
+	dis.bg_color = color.darkened(0.7)
 	b.add_theme_stylebox_override("disabled", dis)
 	return b

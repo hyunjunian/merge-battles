@@ -14,12 +14,12 @@ Godot 4.7.2.stable · GDScript 게임 프로젝트. Claude Code 클라우드 세
 | `project.godot` | 프로젝트 설정. 메인 장면 `res://scenes/main.tscn` |
 | `scenes/` | 장면(`.tscn`) |
 | `scripts/` | GDScript |
-| `scripts/core/` | 게임 규칙 (UI 없음, 테스트 대상): 아이템·가방·시너지·전투·적 생성·게임 상태 |
+| `scripts/core/` | 게임 규칙 (UI 없음, 테스트 대상): 유닛·아이템 정의, 가격·상점 확률, 가방, 시너지, 전투, 적 생성, 게임 상태(로그라이크), 기록 |
 | `scripts/ui/` | 그리기 전용 (가방 그리드, 3D 전투 재생 `battle_view_3d.gd`). 전투 결과는 `BattleSim` 이 미리 계산하고 화면은 재생만 한다 |
 | `assets/` | 그림·소리·글꼴. 한글 글꼴은 `assets/theme.tres`(메인 장면 theme)로 적용 |
 | `tests/` | `test_*.gd` 테스트(애드온 없는 자체 실행기 `run_tests.gd`) |
 | `tools/check.sh` | 임포트 → 문법 검사 → 테스트 |
-| `tools/screenshot.sh` | 장면을 실행해 `build/screenshots/<장면>.png` 저장 (xvfb 필요). 추가 인자 `demo=camp\|prep\|enemy\|battle` 로 데모 화면, `t=<초>` 로 전투 시점 |
+| `tools/screenshot.sh` | 장면을 실행해 `build/screenshots/<장면>.png` 저장 (xvfb 필요). 추가 인자 `demo=start\|shop\|enemy\|battle\|result\|gameover` 로 데모 화면, `t=<초>` 로 전투 시점 |
 
 ## 규칙
 1. **커밋 전 `tools/check.sh`가 통과해야 한다.** 실패하면 고친 뒤 커밋한다.

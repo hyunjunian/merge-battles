@@ -37,98 +37,104 @@ func test_clamp_score() -> void:
 func test_select_and_equip_by_taps() -> void:
 	var main := _spawn()
 	var state: GameState = main.state
-	var item: Item = state.inventory[0]
-	main._on_inventory_pressed(item)
-	check(main.selected == item, "보유 아이템 선택")
-	main._on_cell_pressed(1, Vector2i(0, 0))
-	check_eq(state.unit_of(item), 1, "누른 가방에 들어감")
+	var club := Item.new("club")
+	state.inventory.append(club)
+	main.refresh()
+	main._on_inventory_pressed(club)
+	check(main.selected == club, "보유 아이템 선택")
+	main._on_cell_pressed(0, Vector2i(0, 0))
+	check_eq(state.unit_of(club), 0, "누른 가방에 들어감")
 	check(main.selected == null, "넣으면 선택 해제")
-	main._on_cell_pressed(1, Vector2i(0, 0))
-	check(main.selected == item, "가방 속 아이템을 누르면 선택")
+	main._on_cell_pressed(0, Vector2i(0, 0))
+	check(main.selected == club, "가방 속 아이템을 누르면 선택")
 	main._on_unequip()
-	check(state.inventory.has(item), "빼기")
+	check(state.inventory.has(club), "빼기")
 	free_later(main)
 
 
-func test_depart_and_fight_flow() -> void:
+func test_buy_unit_appears_on_field() -> void:
 	var main := _spawn()
 	var state: GameState = main.state
-	check(state.phase == GameState.Phase.CAMP, "캠프에서 시작")
-	main._on_inventory_pressed(state.inventory[0])
-	main._on_cell_pressed(0, Vector2i(0, 0))
-	main._on_depart()
-	check(state.phase == GameState.Phase.EXPEDITION, "출정")
-	var round_before := state.round_no
+	state.gold = 20
+	state.shop[0] = {"kind": "unit", "id": "soldier"}
+	main._on_buy(0)
+	check_eq(state.units.size(), 2, "유닛 구매")
+	check_eq(main.battle_view.unit_count("a"), 2, "전장에 바로 섬")
+	check_eq(main.active_unit, 1, "산 유닛을 편성")
+	main._on_sell_unit()
+	check_eq(state.units.size(), 1, "판매하면 빠짐")
+	check_eq(main.battle_view.unit_count("a"), 1)
+	free_later(main)
+
+
+func test_fight_flow_and_next_round() -> void:
+	var main := _spawn()
+	var state: GameState = main.state
 	main._on_fight()
 	check(main.battling, "전투 중")
 	check(main.battle_view.mode == BattleView3D.Mode.PLAYING, "전장에서 전투 재생")
+	check(not main.sheet.visible, "전투 중엔 시트 숨김 (전장 전체 화면)")
 	main.battle_view.skip()
-	check(main.battle_view.done, "건너뛰면 끝")
-	var won: bool = main.last_result["winner"] == "a"
-	check_eq(state.round_no, round_before + (1 if won else 0), "결과 반영")
 	check(not main.battling, "전투 끝")
+	check_eq(state.round_no, 2, "승패와 상관없이 다음 라운드")
+	check(main.popup.get_child_count() > 0, "결과 팝업")
 	main._on_continue()
 	check(main.battle_view.mode == BattleView3D.Mode.PREVIEW, "다음 상대 미리보기로 돌아옴")
 	free_later(main)
 
 
-func test_field_always_shows_slots_and_next_enemy() -> void:
+func test_game_over_saves_record_and_restarts() -> void:
+	var main := _spawn()
+	var path := "user://test_main_records.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	main.records_path = path
+	var state: GameState = main.state
+	state.hp = 1
+	state.units[0].placements.clear()
+	state.round_no = 30  # 아주 강한 상대
+	main._on_fight()
+	main.battle_view.skip()
+	check(state.game_over, "체력 0 → 게임 오버")
+	check_eq(main.records.get("best_round", 0), 30, "도달 라운드 기록")
+	check_eq(Records.load_records(path)["runs"], 1, "파일에 저장")
+	main._on_new_run()
+	check(main.state != state, "새 판")
+	check_eq(main.state.hp, GameState.START_HP)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	free_later(main)
+
+
+func test_field_shows_units_and_enemy() -> void:
 	var main := _spawn()
 	var state: GameState = main.state
-	check_eq(main.battle_view.unit_count("a"), GameState.UNIT_SLOTS, "빈자리 포함 우리 자리 3개")
-	check_eq(main.battle_view.unit_count("b"), state.enemy_team().size(), "다음 상대가 서 있음")
+	check_eq(main.battle_view.unit_count("a"), state.units.size(), "우리 유닛")
+	check_eq(main.battle_view.unit_count("b"), state.enemy_team().size(), "이번 상대")
 	free_later(main)
 
 
 func test_tap_enemy_shows_detail_and_tap_own_unit_edits() -> void:
 	var main := _spawn()
-	main._on_field_tapped("b", 0)
-	check_eq(main.inspect_enemy, 0, "적 상세 보기")
-	check_eq(main.battle_view.highlight.get("side", ""), "b", "적 강조")
-	main._on_field_tapped("a", 2)
-	check_eq(main.inspect_enemy, -1, "우리 유닛을 누르면 상세 닫힘")
-	check_eq(main.active_unit, 2, "그 유닛 편집")
-	# 편성은 고른 유닛 가방으로 들어간다
-	var item: Item = main.state.inventory[0]
-	main._on_inventory_pressed(item)
-	main._on_cell_pressed(main.active_unit, Vector2i(0, 0))
-	check_eq(main.state.unit_of(item), 2)
-	free_later(main)
-
-
-func test_sheet_toggle_and_battle_framing() -> void:
-	var main := _spawn()
-	check(main.sheet.visible and main.sheet_open, "시트가 펼쳐진 채 시작")
 	main._on_toggle_sheet()
 	check(not main.sheet_open, "접기")
 	check(not main.scroll.visible, "접으면 내용 숨김")
 	main._on_field_tapped("b", 0)
 	check(main.sheet_open, "전장을 탭하면 다시 펼침")
-	var state: GameState = main.state
-	main._on_inventory_pressed(state.inventory[0])
-	main._on_cell_pressed(0, Vector2i(0, 0))
-	main._on_depart()
-	main._on_fight()
-	check(not main.sheet.visible, "전투 중엔 시트 숨김 (전장 전체 화면)")
-	main.battle_view.skip()
-	check(main.popup.get_child_count() > 0, "결과 팝업")
+	check_eq(main.inspect_enemy, 0, "적 상세 보기")
+	check_eq(main.battle_view.highlight.get("side", ""), "b", "적 강조")
+	main._on_field_tapped("a", 0)
+	check_eq(main.inspect_enemy, -1, "우리 유닛을 누르면 상세 닫힘")
+	check_eq(main.active_unit, 0)
 	free_later(main)
 
 
-func test_roster_keeps_empty_slots_for_our_side() -> void:
-	var packs: Array[Backpack] = [Backpack.new(), Backpack.new(), Backpack.new()]
-	packs[1].place(Item.new("short_bow"), Vector2i(0, 0))
-	var ours := Main.roster(packs, "a", "유닛 %d", true)
-	check_eq(ours.size(), 3)
-	check(ours[0]["empty"] and not ours[1]["empty"], "빈자리 표시")
-	check(ours[1]["ranged"], "원거리 표시")
-	check_eq(ours[1]["pos"], BattleSim.start_position("a", 1, 3), "전투 시작 위치와 같음")
-	check_eq(Main.roster(packs, "b", "적 %d", false).size(), 1, "상대는 빈 가방 제외")
-
-
-func test_unit_color_uses_priciest_item() -> void:
-	var pack := Backpack.new()
-	pack.place(Item.new("apple"), Vector2i(0, 0))
-	pack.place(Item.new("axe"), Vector2i(1, 0))
-	check_eq(Main.unit_color(pack), Item.new("axe").color())
-	check_eq(Main.unit_color(Backpack.new()), Color.GRAY)
+func test_ui_helpers() -> void:
+	check_eq(Main.streak_text(3), "3연승")
+	check_eq(Main.streak_text(-2), "2연패")
+	check_eq(Main.streak_text(1), "")
+	var big := Backpack.new("warlord")
+	check(Main.cell_size_for(big) * big.height <= 224.0 + 0.01, "큰 가방도 시트에 들어감")
+	var packs: Array[Backpack] = [Backpack.new("archer")]
+	packs[0].slot = 4
+	var r := Main.roster(packs, "a")
+	check(r[0]["ranged"], "원거리 표시")
+	check_eq(r[0]["pos"], BattleSim.slot_position("a", 4), "자리 위치")

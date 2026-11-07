@@ -35,9 +35,12 @@ const RETARGET_MARGIN := 1.0
 const STRIDE := 3
 
 
-## 가방 하나 + 팀 보너스 → 전투 능력치.
+## 유닛 하나 + 팀 보너스 → 전투 능력치. 유닛 기본 능력치에 가방 속 아이템을 더한다.
 static func unit_stats(pack: Backpack, bonus: Dictionary = {}) -> Dictionary:
 	var s := {"hp": BASE_HP, "atk": BASE_ATK, "armor": 0.0, "spd": BASE_SPD, "regen": 0.0, "range": MELEE_RANGE, "move": BASE_MOVE}
+	var base := pack.base_stats()
+	for k: String in base.keys():
+		s[k] = float(base[k])
 	for item in pack.items():
 		var st := item.stats()
 		for k: String in st.keys():
@@ -50,21 +53,14 @@ static func unit_stats(pack: Backpack, bonus: Dictionary = {}) -> Dictionary:
 	return s
 
 
-## 가방 목록 → 전투에 나가는 유닛 능력치 목록 (빈 가방은 빠진다, 시너지 반영).
-## 각 항목에 "slot"(가방 번호)과 "slots"(가방 수)를 넣어 시작 위치를 자리 기준으로 정한다.
-static func team_stats(packs: Array[Backpack]) -> Array[Dictionary]:
-	var active: Array[Backpack] = []
-	for p in packs:
-		if not p.is_empty():
-			active.append(p)
-	var bonus := Synergy.bonuses(Synergy.count_tags(active))
+## 유닛 목록 → 전투 능력치 목록 (시너지 반영). 각 항목의 "pos" 는 그 유닛 자리의 시작 위치.
+static func team_stats(packs: Array[Backpack], side: String = "a") -> Array[Dictionary]:
+	var bonus := Synergy.bonuses(Synergy.count_tags(packs))
 	var out: Array[Dictionary] = []
 	for i in packs.size():
-		if packs[i].is_empty():
-			continue
 		var s := unit_stats(packs[i], bonus)
-		s["slot"] = i
-		s["slots"] = packs.size()
+		var slot := packs[i].slot if packs[i].slot >= 0 else i
+		s["pos"] = slot_position(side, slot)
 		out.append(s)
 	return out
 
@@ -77,7 +73,21 @@ static func is_ranged(stats: Dictionary) -> bool:
 	return float(stats.get("range", MELEE_RANGE)) > MELEE_RANGE + 0.01
 
 
-## 시작 위치: 팀마다 한 줄로 가운데 정렬. index 는 자리 번호, count 는 자리 수.
+## 전장 자리: 앞줄 0~2, 뒷줄 3~5. 우리 팀(a)은 +z 쪽, 상대(b)는 -z 쪽.
+const SLOT_COUNT := 6
+const SLOT_X := [-2.6, 0.0, 2.6]
+const FRONT_Z := 3.0
+const BACK_Z := 5.4
+
+
+static func slot_position(side: String, slot: int) -> Vector2:
+	var s := clampi(slot, 0, SLOT_COUNT - 1)
+	var x: float = SLOT_X[s % 3]
+	var z := FRONT_Z if s < 3 else BACK_Z
+	return Vector2(x, z if side == "a" else -z)
+
+
+## 자리 번호 없이 줄 세울 때 (테스트용): 가운데 정렬 한 줄.
 static func start_position(side: String, index: int, count: int) -> Vector2:
 	var x := (index - (count - 1) / 2.0) * SPACING
 	return Vector2(x, START_Z if side == "a" else -START_Z)
@@ -217,7 +227,7 @@ static func _make_fighters(side: String, team: Array[Dictionary]) -> Array:
 			"hp": float(s["hp"]), "max_hp": float(s["hp"]), "atk": float(s["atk"]),
 			"armor": float(s["armor"]), "spd": spd, "regen": float(s["regen"]),
 			"range": float(s.get("range", MELEE_RANGE)), "move": float(s.get("move", BASE_MOVE)),
-			"pos": start_position(side, int(s.get("slot", i)), int(s.get("slots", team.size()))), "target": -1,
+			"pos": s.get("pos", start_position(side, i, team.size())), "target": -1,
 			"cd": 0.5 / spd,
 		})
 	return out

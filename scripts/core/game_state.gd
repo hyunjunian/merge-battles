@@ -1,30 +1,37 @@
 class_name GameState
 extends RefCounted
-## 한 판의 진행 상태: 골드, 라운드, 보유 아이템, 유닛 가방, 상점.
+## 한 판(로그라이크)의 진행 상태.
 ##
-## 흐름
-##   베이스 캠프(상점·합성·편성) → 출정 → 라운드 N 전투
-##     승리: 골드를 받고 라운드 N+1 로 (원정 계속, 원하면 캠프로 귀환)
-##     패배: 베이스 캠프로 돌아온다. 라운드는 유지되어 정비 후 같은 라운드에 다시 도전한다.
-##
-## 예산: 가방에 넣은 아이템 비용의 합은 라운드 예산을 넘을 수 없다.
+## 규칙
+## - 체력 100, 1라운드부터 시작. 매 라운드 전투를 하고, 승패와 상관없이 다음 라운드로 간다.
+## - 지면 살아남은 상대 유닛 수 × HP_LOSS_PER_UNIT 만큼 체력이 준다. 0 이하가 되면 게임 오버(기록 저장).
+## - 라운드가 끝날 때마다 돈을 받는다: 기본 BASE_INCOME + 연승/연패 보너스(연속 라운드 수 - 1, 최대 MAX_STREAK_BONUS).
+## - 상점에서 유닛과 아이템을 산다. 유닛은 사는 즉시 전장에 나가고 빼려면 팔아야 한다.
+##   아이템은 보유함에 들어가고, 유닛 가방에 넣고 뺄 수 있다. 판매가는 항상 구매가보다 낮다.
+## - 시작: 돈 START_GOLD, 1x2 유닛(견습병) 하나.
 
-enum Phase { CAMP, EXPEDITION }
-
-const UNIT_SLOTS := 3
-const START_GOLD := 10
-const SHOP_SIZE := 4
+const START_HP := 100
+const START_GOLD := 4
+const START_UNIT := "recruit"
+const BASE_INCOME := 3
+const MAX_STREAK_BONUS := 5
+const HP_LOSS_PER_UNIT := 8
+const UNIT_OFFERS := 2
+const ITEM_OFFERS := 3
 const REROLL_COST := 1
-const START_ITEMS: Array[String] = ["sword", "buckler", "apple"]
 
+var hp: int = START_HP
 var gold: int = START_GOLD
 var round_no: int = 1
-var best_round: int = 0
-var phase: Phase = Phase.CAMP
+## 연속 기록: 양수면 연승 수, 음수면 연패 수
+var streak: int = 0
+var game_over: bool = false
+## 전장의 우리 유닛 (각자 slot 을 가진다)
+var units: Array[Backpack] = []
 ## 가방에 넣지 않은 보유 아이템
 var inventory: Array[Item] = []
-var units: Array[Backpack] = []
-var shop: Array[Item] = []
+## 상점 진열: {"kind": "unit" | "item", "id": String}. 산 칸은 빈 사전.
+var shop: Array[Dictionary] = []
 var rng := RandomNumberGenerator.new()
 var run_seed: int = 0
 
@@ -32,36 +39,118 @@ var run_seed: int = 0
 func _init(seed_value: int = 0) -> void:
 	run_seed = seed_value if seed_value != 0 else randi()
 	rng.seed = run_seed
-	for i in UNIT_SLOTS:
-		units.append(Backpack.new())
-	for id in START_ITEMS:
-		inventory.append(Item.new(id))
+	_deploy(Backpack.new(START_UNIT))
 	refill_shop()
 
 
-# ── 예산 ──────────────────────────────────────────────
+# ── 돈 · 체력 규칙 ────────────────────────────────────
 
-static func budget_for_round(r: int) -> int:
-	return 8 + 4 * (r - 1)
-
-
-func budget() -> int:
-	return budget_for_round(round_no)
+## 연속 라운드 수에 비례한 보너스 (2연속부터 +1, 3연속 +2, ...)
+static func streak_bonus(streak_value: int) -> int:
+	return clampi(absi(streak_value) - 1, 0, MAX_STREAK_BONUS)
 
 
-func used_budget() -> int:
-	var total := 0
+static func income_for(streak_value: int) -> int:
+	return BASE_INCOME + streak_bonus(streak_value)
+
+
+static func hp_loss_for(surviving_enemies: int) -> int:
+	return HP_LOSS_PER_UNIT * maxi(1, surviving_enemies)
+
+
+# ── 전장 자리 ─────────────────────────────────────────
+
+func free_slot() -> int:
+	var used := {}
 	for u in units:
-		total += u.total_cost()
-	return total
+		used[u.slot] = true
+	for s in BattleSim.SLOT_COUNT:
+		if not used.has(s):
+			return s
+	return -1
 
 
-## 보상: 승리하면 3 + 라운드, 패배하면 2.
-static func reward_for(r: int, won: bool) -> int:
-	return 3 + r if won else 2
+func has_free_slot() -> bool:
+	return free_slot() >= 0
 
 
-# ── 아이템 위치 ────────────────────────────────────────
+func _deploy(pack: Backpack) -> void:
+	pack.slot = free_slot()
+	units.append(pack)
+
+
+# ── 상점 ──────────────────────────────────────────────
+
+func refill_shop() -> void:
+	shop.clear()
+	for i in UNIT_OFFERS:
+		shop.append({"kind": "unit", "id": Pricing.roll_unit(round_no, rng)})
+	for i in ITEM_OFFERS:
+		shop.append({"kind": "item", "id": Pricing.roll_item(round_no, rng)})
+
+
+static func offer_cost(offer: Dictionary) -> int:
+	if offer.is_empty():
+		return 0
+	return UnitDB.cost(offer["id"]) if offer["kind"] == "unit" else Pricing.item_cost(offer["id"])
+
+
+## 살 수 없으면 이유, 살 수 있으면 빈 문자열
+func buy_block_reason(index: int) -> String:
+	if game_over:
+		return "게임이 끝났습니다"
+	if index < 0 or index >= shop.size() or shop[index].is_empty():
+		return "팔린 물건입니다"
+	if gold < offer_cost(shop[index]):
+		return "돈이 부족합니다"
+	if shop[index]["kind"] == "unit" and not has_free_slot():
+		return "전장에 자리가 없습니다 (최대 %d)" % BattleSim.SLOT_COUNT
+	return ""
+
+
+func buy(index: int) -> bool:
+	if buy_block_reason(index) != "":
+		return false
+	var offer := shop[index]
+	gold -= offer_cost(offer)
+	if offer["kind"] == "unit":
+		_deploy(Backpack.new(offer["id"]))
+	else:
+		inventory.append(Item.new(offer["id"]))
+	shop[index] = {}
+	return true
+
+
+func reroll() -> bool:
+	if game_over or gold < REROLL_COST:
+		return false
+	gold -= REROLL_COST
+	refill_shop()
+	return true
+
+
+## 유닛 판매: 가방 속 아이템은 보유함으로 돌아온다.
+func sell_unit(pack: Backpack) -> bool:
+	if game_over or not units.has(pack):
+		return false
+	for item in pack.items():
+		pack.remove(item)
+		inventory.append(item)
+	units.erase(pack)
+	gold += pack.sell_price()
+	return true
+
+
+func sell_item(item: Item) -> bool:
+	if game_over or not owns(item):
+		return false
+	unequip(item)
+	inventory.erase(item)
+	gold += item.sell_price()
+	return true
+
+
+# ── 아이템 장착 ───────────────────────────────────────
 
 ## 아이템이 들어 있는 유닛 번호. 보유함에 있으면 -1.
 func unit_of(item: Item) -> int:
@@ -75,15 +164,10 @@ func owns(item: Item) -> bool:
 	return inventory.has(item) or unit_of(item) >= 0
 
 
-## 아이템을 unit_idx 번 유닛 가방의 pos 에 놓을 수 있는가 (칸과 예산 모두 확인).
 func can_equip(item: Item, unit_idx: int, pos: Vector2i) -> bool:
-	if unit_idx < 0 or unit_idx >= units.size() or not owns(item):
+	if game_over or unit_idx < 0 or unit_idx >= units.size() or not owns(item):
 		return false
-	if not units[unit_idx].can_place(item, pos):
-		return false
-	var current := unit_of(item)
-	var extra := 0 if current >= 0 else item.cost()
-	return used_budget() + extra <= budget()
+	return units[unit_idx].can_place(item, pos)
 
 
 ## 보유함 → 가방, 또는 가방 → 다른 자리/다른 가방.
@@ -119,107 +203,55 @@ func rotate(item: Item) -> bool:
 	return true
 
 
-# ── 상점 · 판매 · 합성 (베이스 캠프에서만) ─────────────
-
-func refill_shop() -> void:
-	shop.clear()
-	var ids := ItemDB.ids()
-	for i in SHOP_SIZE:
-		shop.append(Item.new(ids[rng.randi_range(0, ids.size() - 1)]))
-
-
-func reroll() -> bool:
-	if phase != Phase.CAMP or gold < REROLL_COST:
-		return false
-	gold -= REROLL_COST
-	refill_shop()
-	return true
-
-
-func buy(index: int) -> bool:
-	if phase != Phase.CAMP or index < 0 or index >= shop.size():
-		return false
-	var item := shop[index]
-	if gold < item.cost():
-		return false
-	gold -= item.cost()
-	shop.remove_at(index)
-	inventory.append(item)
-	return true
-
-
-func sell(item: Item) -> bool:
-	if phase != Phase.CAMP or not owns(item):
-		return false
-	unequip(item)
-	inventory.erase(item)
-	gold += item.sell_price()
-	return true
-
-
-## item 과 합성할 수 있는 다른 보유 아이템 (보유함 우선, 없으면 가방 안).
-func merge_partner(item: Item) -> Item:
-	for other in inventory:
-		if item.can_merge_with(other):
-			return other
-	for u in units:
-		for other in u.items():
-			if item.can_merge_with(other):
-				return other
-	return null
-
-
-## 합성 결과는 보유함으로 들어간다. 실패하면 null.
-func merge(item: Item) -> Item:
-	if phase != Phase.CAMP or not owns(item):
-		return null
-	var partner := merge_partner(item)
-	if partner == null:
-		return null
-	for it: Item in [item, partner]:
-		unequip(it)
-		inventory.erase(it)
-	var result := Item.new(item.def_id, item.tier + 1)
-	inventory.append(result)
-	return result
-
-
 # ── 전투 ──────────────────────────────────────────────
-
-func has_team() -> bool:
-	for u in units:
-		if not u.is_empty():
-			return true
-	return false
-
 
 func enemy_team() -> Array[Backpack]:
 	return EnemyGen.generate(round_no, run_seed)
 
 
-func start_expedition() -> bool:
-	if not has_team():
-		return false
-	phase = Phase.EXPEDITION
-	return true
-
-
-func return_to_camp() -> void:
-	phase = Phase.CAMP
-	refill_shop()
+func can_fight() -> bool:
+	return not game_over and not units.is_empty()
 
 
 func fight() -> Dictionary:
-	return BattleSim.simulate(BattleSim.team_stats(units), BattleSim.team_stats(enemy_team()))
+	return BattleSim.simulate(BattleSim.team_stats(units, "a"), BattleSim.team_stats(enemy_team(), "b"))
 
 
-## 전투 결과 반영. 받은 골드를 돌려준다.
-func apply_result(won: bool) -> int:
-	var reward := reward_for(round_no, won)
-	gold += reward
+static func surviving(result: Dictionary, side: int) -> int:
+	var last: Array = result["frames"][-1]
+	var n := 0
+	var count: int = (result["max_a"] if side == 0 else result["max_b"]).size()
+	for i in count:
+		if BattleSim.frame_hp(last, side, i) > 0.0:
+			n += 1
+	return n
+
+
+## 전투 결과 반영: 체력, 연속 기록, 수입, 다음 라운드, 상점 새로고침.
+## 반환: {won, hp_loss, survivors, income, bonus, streak, round_played, game_over}
+func apply_result(result: Dictionary) -> Dictionary:
+	var won: bool = result["winner"] == "a"
+	var played := round_no
+	var survivors := 0 if won else surviving(result, 1)
+	var loss := 0 if won else hp_loss_for(survivors)
+	hp -= loss
 	if won:
-		best_round = maxi(best_round, round_no)
-		round_no += 1
+		streak = streak + 1 if streak > 0 else 1
 	else:
-		return_to_camp()
-	return reward
+		streak = streak - 1 if streak < 0 else -1
+	var summary := {
+		"won": won, "hp_loss": loss, "survivors": survivors, "streak": streak,
+		"round_played": played, "income": 0, "bonus": 0, "game_over": false,
+	}
+	if hp <= 0:
+		hp = 0
+		game_over = true
+		summary["game_over"] = true
+		return summary
+	var income := income_for(streak)
+	gold += income
+	summary["income"] = income
+	summary["bonus"] = streak_bonus(streak)
+	round_no += 1
+	refill_shop()
+	return summary
