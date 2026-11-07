@@ -26,6 +26,8 @@ var inspect_unit: int = -1
 ## 정찰 중인 적 번호 (-1 이면 없음). 둘 다 -1 이면 시트는 상점.
 var inspect_enemy: int = -1
 var battling: bool = false
+## 전투 2배속 (켜 두면 다음 전투에도 유지)
+var fast: bool = false
 var last_result: Dictionary = {}
 ## 전투가 끝난 뒤 보여 줄 GameState.apply_result() 요약
 var summary: Dictionary = {}
@@ -134,7 +136,7 @@ func refresh() -> void:
 	_build_header()
 	if battling:
 		_layout_sheet(false, false)
-		action_bar.add_child(_action_button("건너뛰기", _on_skip, "Button", ""))
+		action_bar.add_child(_action_button("2배속 켜짐" if fast else "2배속", _on_toggle_fast, "PrimaryButton" if fast else "Button", "bolt"))
 		return
 	if not summary.is_empty():
 		_layout_sheet(false, false)
@@ -671,11 +673,14 @@ func _start_battle(start_time: float) -> void:
 	last_result = state.fight()
 	battling = true
 	refresh()
+	battle_view.speed_mult = 2.0 if fast else 1.0
 	battle_view.play(last_result, colors_a, colors_b, start_time)
 
 
-func _on_skip() -> void:
-	battle_view.skip()
+func _on_toggle_fast() -> void:
+	fast = not fast
+	battle_view.speed_mult = 2.0 if fast else 1.0
+	refresh()
 
 
 func _on_battle_finished(_winner: String) -> void:

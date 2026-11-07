@@ -75,6 +75,10 @@ func test_fight_flow_and_next_round() -> void:
 	var state: GameState = main.state
 	main._on_fight()
 	check(main.battling, "전투 중")
+	check_eq(main.battle_view.speed_mult, 1.0, "기본은 보통 속도")
+	main._on_toggle_fast()
+	check_eq(main.battle_view.speed_mult, 2.0, "2배속")
+	check(main.battling, "배속을 바꿔도 전투는 계속")
 	check(main.battle_view.mode == BattleView3D.Mode.PLAYING, "전장에서 전투 재생")
 	check(not main.sheet.visible, "전투 중엔 시트 숨김 (전장 전체 화면)")
 	main.battle_view.skip()
@@ -83,6 +87,8 @@ func test_fight_flow_and_next_round() -> void:
 	check(main.popup.get_child_count() > 0, "결과 팝업")
 	main._on_continue()
 	check(main.battle_view.mode == BattleView3D.Mode.PREVIEW, "다음 상대 미리보기로 돌아옴")
+	main._on_fight()
+	check_eq(main.battle_view.speed_mult, 2.0, "다음 전투도 2배속 유지")
 	free_later(main)
 
 

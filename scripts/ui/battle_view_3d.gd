@@ -36,6 +36,8 @@ enum Mode { PREVIEW, PLAYING }
 var mode: Mode = Mode.PREVIEW
 var result: Dictionary = {}
 var t: float = 0.0
+## 재생 배속 (1 = 보통, 2 = 2배속)
+var speed_mult: float = 1.0
 var done: bool = false
 ## 미리보기에서 강조할 유닛: {"side": "a"|"b", "index": int} 또는 빈 사전
 var highlight: Dictionary = {}
@@ -242,7 +244,7 @@ func _process(delta: float) -> void:
 			framing = _framing_target
 		_apply_camera()
 	if mode == Mode.PLAYING and not done:
-		_advance(delta * SPEED)
+		_advance(delta * SPEED * speed_mult)
 	elif mode == Mode.PREVIEW:
 		_idle()
 
