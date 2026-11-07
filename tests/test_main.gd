@@ -21,7 +21,7 @@ func test_main_scene_loads() -> void:
 		return
 	var main := packed.instantiate()
 	check(main.has_node("Title"), "Title 노드 없음")
-	check(main.has_node("Scroll/Content"), "Content 노드 없음")
+	check(main.has_node("Sheet/Box/Scroll/Content"), "Content 노드 없음")
 	check(main.has_node("ActionBar"), "ActionBar 노드 없음")
 	check(main.has_node("Field/BattleView3D"), "전장 노드 없음")
 	check((main.get_node("Title") as Label).text != "", "제목이 비어 있음")
@@ -93,6 +93,25 @@ func test_tap_enemy_shows_detail_and_tap_own_unit_edits() -> void:
 	main._on_inventory_pressed(item)
 	main._on_cell_pressed(main.active_unit, Vector2i(0, 0))
 	check_eq(main.state.unit_of(item), 2)
+	free_later(main)
+
+
+func test_sheet_toggle_and_battle_framing() -> void:
+	var main := _spawn()
+	check(main.sheet.visible and main.sheet_open, "시트가 펼쳐진 채 시작")
+	main._on_toggle_sheet()
+	check(not main.sheet_open, "접기")
+	check(not main.scroll.visible, "접으면 내용 숨김")
+	main._on_field_tapped("b", 0)
+	check(main.sheet_open, "전장을 탭하면 다시 펼침")
+	var state: GameState = main.state
+	main._on_inventory_pressed(state.inventory[0])
+	main._on_cell_pressed(0, Vector2i(0, 0))
+	main._on_depart()
+	main._on_fight()
+	check(not main.sheet.visible, "전투 중엔 시트 숨김 (전장 전체 화면)")
+	main.battle_view.skip()
+	check(main.popup.get_child_count() > 0, "결과 팝업")
 	free_later(main)
 
 

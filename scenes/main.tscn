@@ -1,8 +1,24 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
 [ext_resource type="Script" path="res://scripts/ui/battle_view_3d.gd" id="3_field"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_sheet"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.1, 0.09, 0.08, 0.86)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hud"]
+bg_color = Color(0.1, 0.09, 0.08, 0.78)
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -11,10 +27,11 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 theme = ExtResource("2_theme")
 script = ExtResource("1_main")
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="Field" type="Control" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -22,7 +39,23 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.11, 0.1, 0.09, 1)
+
+[node name="BattleView3D" type="Control" parent="Field"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("3_field")
+
+[node name="Hud" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 136.0
+grow_horizontal = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_hud")
 
 [node name="Title" type="Label" parent="."]
 layout_mode = 1
@@ -33,6 +66,7 @@ offset_top = 8.0
 offset_right = -16.0
 offset_bottom = 46.0
 grow_horizontal = 2
+mouse_filter = 2
 theme_override_colors/font_color = Color(0.95, 0.75, 0.3, 1)
 theme_override_font_sizes/font_size = 26
 text = "Merge Battles"
@@ -46,39 +80,47 @@ offset_top = 48.0
 offset_right = -16.0
 offset_bottom = 128.0
 grow_horizontal = 2
+mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="Field" type="Control" parent="."]
-layout_mode = 1
-anchors_preset = 10
-anchor_right = 1.0
-offset_top = 132.0
-offset_bottom = 704.0
-grow_horizontal = 2
-
-[node name="BattleView3D" type="Control" parent="Field"]
+[node name="Popup" type="CenterContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_top = 140.0
+offset_bottom = -120.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("3_field")
+mouse_filter = 2
 
-[node name="Scroll" type="ScrollContainer" parent="."]
+[node name="Sheet" type="PanelContainer" parent="."]
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 12
+anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 16.0
-offset_top = 712.0
-offset_right = -16.0
+offset_left = 8.0
+offset_top = -680.0
+offset_right = -8.0
 offset_bottom = -112.0
 grow_horizontal = 2
-grow_vertical = 2
+grow_vertical = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_sheet")
+
+[node name="Box" type="VBoxContainer" parent="Sheet"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SheetHead" type="HBoxContainer" parent="Sheet/Box"]
+layout_mode = 2
+
+[node name="Scroll" type="ScrollContainer" parent="Sheet/Box"]
+layout_mode = 2
+size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="Content" type="VBoxContainer" parent="Scroll"]
+[node name="Content" type="VBoxContainer" parent="Sheet/Box/Scroll"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
@@ -91,9 +133,10 @@ anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 16.0
-offset_top = -104.0
+offset_top = -100.0
 offset_right = -16.0
 offset_bottom = -12.0
 grow_horizontal = 2
 grow_vertical = 0
+mouse_filter = 2
 theme_override_constants/separation = 12

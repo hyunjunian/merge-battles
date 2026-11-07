@@ -17,6 +17,15 @@ const PROJECTILE_TIME := 0.22
 const PICK_RADIUS := 60.0
 const TEAM_COLORS := {"a": Color(0.25, 0.55, 0.95), "b": Color(0.92, 0.30, 0.26)}
 
+## 카메라 구도 (720x1280 기준으로 전장 네 모서리를 투영해 고른 값).
+## FULL: 전장이 위 HUD(~150px) 아래부터 아래 버튼(~1160px) 위까지 꽉 차게.
+## COMPACT: 아래 시트가 열려 있을 때 전장이 HUD 아래 ~ 시트 위(~590px)에 들어오게.
+const CAM_LOOK := Vector3(0, 0, 0)
+const CAM_DIR := Vector3(0, 0.9397, 0.3420)  # 바라보는 점에서 카메라 쪽 방향 (70도 내려다봄)
+const CAM_FULL := {"dist": 16.5, "v_offset": -0.25}
+const CAM_COMPACT := {"dist": 30.0, "v_offset": -8.75}
+const CAM_LERP := 8.0
+
 enum Mode { PREVIEW, PLAYING }
 
 var mode: Mode = Mode.PREVIEW
@@ -25,6 +34,11 @@ var t: float = 0.0
 var done: bool = false
 ## 미리보기에서 강조할 유닛: {"side": "a"|"b", "index": int} 또는 빈 사전
 var highlight: Dictionary = {}
+## 0 = FULL, 1 = COMPACT (set_compact 로 바꾸면 부드럽게 옮겨 간다)
+var framing: float = 0.0
+var _framing_target: float = 0.0
+## 오버레이에 그리는 시간 표시의 위치 (위 HUD 아래)
+var info_top: float = 150.0
 
 var _viewport: SubViewport
 var _camera: Camera3D
@@ -144,7 +158,26 @@ func _gui_input(event: InputEvent) -> void:
 		accept_event()
 
 
+func set_compact(compact: bool, animate: bool = true) -> void:
+	_framing_target = 1.0 if compact else 0.0
+	if not animate:
+		framing = _framing_target
+	_apply_camera()
+
+
+func _apply_camera() -> void:
+	var dist := lerpf(CAM_FULL["dist"], CAM_COMPACT["dist"], framing)
+	_camera.look_at_from_position(CAM_LOOK + CAM_DIR.normalized() * dist, CAM_LOOK, Vector3.UP)
+	_camera.v_offset = lerpf(CAM_FULL["v_offset"], CAM_COMPACT["v_offset"], framing)
+	_overlay.queue_redraw()
+
+
 func _process(delta: float) -> void:
+	if not is_equal_approx(framing, _framing_target):
+		framing = move_toward(framing, _framing_target, delta * CAM_LERP * maxf(0.15, absf(_framing_target - framing)))
+		if absf(framing - _framing_target) < 0.002:
+			framing = _framing_target
+		_apply_camera()
 	if mode == Mode.PLAYING and not done:
 		_advance(delta * SPEED)
 	elif mode == Mode.PREVIEW:
@@ -338,7 +371,7 @@ func _draw_overlay() -> void:
 		_overlay.draw_string_outline(font, p, f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, 24, 4, Color(0, 0, 0, a))
 		_overlay.draw_string(font, p, f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(1, 0.85, 0.3, a))
 	if mode == Mode.PLAYING:
-		_overlay.draw_string(font, Vector2(14, 30), "%.1f초" % t, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.2, 0.2, 0.25))
+		_overlay.draw_string(font, Vector2(0, info_top + 26), "%.1f초" % t, HORIZONTAL_ALIGNMENT_CENTER, size.x, 24, Color(0.2, 0.2, 0.25))
 
 
 # ── 3D 장면 ───────────────────────────────────────────
@@ -364,9 +397,11 @@ func _build_world() -> void:
 	_world.add_child(sun)
 
 	_camera = Camera3D.new()
-	_camera.fov = 48.0
+	# 세로 화면이므로 가로 시야각을 고정한다 (전장 폭이 화면 폭에 맞게)
+	_camera.keep_aspect = Camera3D.KEEP_WIDTH
+	_camera.fov = 40.0
 	_world.add_child(_camera)
-	_camera.look_at_from_position(Vector3(0, 17.0, 8.5), Vector3(0, 0, 0.6), Vector3.UP)
+	_apply_camera()
 
 	# 흰 바닥 (전장 크기)
 	var floor_mesh := MeshInstance3D.new()

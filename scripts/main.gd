@@ -1,7 +1,9 @@
 extends Control
-## 메인 장면. 화면 위쪽엔 3D 전장이 항상 떠 있고, 아래 패널에서 유닛을 편성한다.
-##   전장 위쪽: 다음 상대 (탭하면 아래 패널에 상세 전력)
-##   전장 아래쪽: 우리 유닛 자리 3개 (탭하면 그 유닛의 가방 편집)
+## 메인 장면. 3D 전장이 화면 전체에 깔려 있고, 그 위에 UI 가 자리마다 겹쳐 있다.
+##   위: 상태 HUD (골드·예산·시너지)
+##   아래: 시트 (유닛 편성 / 적 상세 / 상점). 접을 수 있고, 열리면 전장 카메라가 위쪽으로 물러난다.
+##   맨 아래: 행동 버튼. 가운데: 전투 결과 팝업.
+##   전장 위쪽은 다음 상대 (탭하면 상세 전력), 아래쪽은 우리 유닛 자리 3개 (탭하면 그 유닛 편성).
 ##   전투 시작: 같은 전장에서 전투를 재생하고, 끝나면 다음 상대가 다시 선다.
 ## 게임 규칙은 scripts/core/ 에 있고, 여기서는 입력을 GameState 에 넘기고 결과를 보여 주기만 한다.
 ##
@@ -19,6 +21,9 @@ var active_unit: int = 0
 ## 상세 보기 중인 적 번호 (-1 이면 편성 패널)
 var inspect_enemy: int = -1
 var battling: bool = false
+## 아래 시트가 펼쳐져 있는가
+var sheet_open: bool = true
+var _laid_out: bool = false
 var last_result: Dictionary = {}
 var _result_info: Dictionary = {}  # 전투가 끝난 뒤 보여 줄 {won, reward}
 
@@ -26,7 +31,11 @@ var _result_info: Dictionary = {}  # 전투가 끝난 뒤 보여 줄 {won, rewar
 @onready var title: Label = $Title
 @onready var header: VBoxContainer = $Header
 @onready var battle_view: BattleView3D = $Field/BattleView3D
-@onready var content: VBoxContainer = $Scroll/Content
+@onready var sheet: PanelContainer = $Sheet
+@onready var sheet_head: HBoxContainer = $Sheet/Box/SheetHead
+@onready var scroll: ScrollContainer = $Sheet/Box/Scroll
+@onready var content: VBoxContainer = $Sheet/Box/Scroll/Content
+@onready var popup: CenterContainer = $Popup
 @onready var action_bar: HBoxContainer = $ActionBar
 
 
@@ -87,17 +96,27 @@ func _ready() -> void:
 
 # ── 화면 구성 ─────────────────────────────────────────
 
+const SHEET_OPEN_HEIGHT := 568.0
+const SHEET_CLOSED_HEIGHT := 64.0
+const SHEET_BOTTOM := 112.0
+
+
 func refresh() -> void:
 	_clear(content)
+	_clear(sheet_head)
 	_clear(action_bar)
+	_clear(popup)
 	_build_header()
 	if battling:
-		content.add_child(_label("전투 중… 유닛들이 알아서 싸웁니다.", 22, Color(1, 1, 1, 0.8)))
+		_layout_sheet(false, false)
 		action_bar.add_child(_big_button("건너뛰기", _on_skip))
 		return
 	if not _result_info.is_empty():
+		_layout_sheet(false, false)
 		_add_result_panel()
 		return
+	_layout_sheet(true, sheet_open)
+	_build_sheet_head()
 	_refresh_field()
 	if inspect_enemy >= 0:
 		_add_enemy_detail()
@@ -110,6 +129,28 @@ func refresh() -> void:
 	if message != "":
 		content.add_child(_label(message, 20, Color(1, 0.6, 0.5), true))
 	_add_main_actions()
+
+
+## 시트 보이기/펼치기와 카메라 구도를 맞춘다.
+func _layout_sheet(show: bool, expanded: bool) -> void:
+	sheet.visible = show
+	scroll.visible = expanded
+	var h := SHEET_OPEN_HEIGHT if expanded else SHEET_CLOSED_HEIGHT
+	sheet.offset_top = -(SHEET_BOTTOM + h)
+	# 첫 화면은 바로, 그 뒤엔 부드럽게 카메라를 옮긴다.
+	battle_view.set_compact(show and expanded, _laid_out)
+	_laid_out = true
+
+
+func _build_sheet_head() -> void:
+	var text := "적 %d 상세 전력" % (inspect_enemy + 1) if inspect_enemy >= 0 else "유닛 %d 편성" % (active_unit + 1)
+	if state.phase == GameState.Phase.CAMP and inspect_enemy < 0:
+		text += " · 상점"
+	sheet_head.add_child(_label(text, 20, ENEMY if inspect_enemy >= 0 else ACCENT))
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sheet_head.add_child(spacer)
+	sheet_head.add_child(_button("▼ 접기" if sheet_open else "▲ 펼치기", _on_toggle_sheet))
 
 
 func _clear(box: Node) -> void:
@@ -262,11 +303,11 @@ func _add_enemy_detail() -> void:
 	var counts := Synergy.count_tags(enemies)
 	var s := BattleSim.unit_stats(pack, Synergy.bonuses(counts))
 	var head := HBoxContainer.new()
-	head.add_child(_label("적 %d 상세 전력 (라운드 %d)" % [inspect_enemy + 1, state.round_no], 22, ENEMY))
+	head.add_child(_label("라운드 %d 상대" % state.round_no, 18, Color(1, 1, 1, 0.6)))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(spacer)
-	head.add_child(_button("닫기", _on_close_enemy))
+	head.add_child(_button("편성으로 돌아가기", _on_close_enemy))
 	content.add_child(head)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
@@ -310,19 +351,27 @@ func _add_result_panel() -> void:
 	var panel := _panel(Color(0.20, 0.30, 0.18) if won else Color(0.35, 0.16, 0.14))
 	var box := VBoxContainer.new()
 	panel.add_child(box)
-	box.add_child(_label("승리!" if won else "패배…", 40, ACCENT if won else ENEMY))
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(_label("승리!" if won else "패배…", 44, ACCENT if won else ENEMY))
 	if won:
 		box.add_child(_label("골드 +%d · 다음은 라운드 %d (예산 %d)" % [_result_info["reward"], state.round_no, state.budget()], 20, Color.WHITE, true))
 	else:
 		box.add_child(_label("골드 +%d · 베이스 캠프로 돌아가 정비합니다" % _result_info["reward"], 20, Color.WHITE, true))
-	content.add_child(panel)
+	panel.custom_minimum_size = Vector2(520, 0)
+	popup.add_child(panel)
 	action_bar.add_child(_big_button("다음 라운드 준비" if won else "베이스 캠프로", _on_continue))
 
 
 # ── 입력 처리 ─────────────────────────────────────────
 
+func _on_toggle_sheet() -> void:
+	sheet_open = not sheet_open
+	refresh()
+
+
 func _on_field_tapped(side: String, index: int) -> void:
 	message = ""
+	sheet_open = true
 	if side == "b":
 		inspect_enemy = -1 if inspect_enemy == index else index
 	else:

@@ -30,5 +30,5 @@ Godot 4.7.2.stable · GDScript 게임 프로젝트. Claude Code 클라우드 세
 6. Godot이 만드는 `*.uid` 파일(스크립트 옆)은 커밋한다. `.godot/`와 `build/`는 커밋하지 않는다(`.gitignore`).
 7. Godot 버전을 올릴 때는 설정 스크립트의 `GODOT_VER`, `.godot-version`, `project.godot`의 `config/features`를 함께 바꾸고 `tools/check.sh`를 돌린다.
 8. 외부 애드온(Asset Library·GitHub)은 사용자와 상의한 뒤 `addons/`에 넣는다. 클라우드 세션은 GitHub 다운로드가 막혀 있을 수 있다.
-9. 화면은 세로 720×1280. 위쪽 3D 전장(`BattleView3D`, 장면에 고정)은 항상 떠 있고 미리보기/재생만 바꾼다. 나머지 UI 는 `scripts/main.gd` 가 코드로 만든다. 규칙은 `scripts/core/` 에 두고 UI 에서 직접 계산하지 않는다.
+9. 화면은 세로 720×1280. 3D 전장(`BattleView3D`, 장면에 고정)이 전체 화면에 깔리고 UI 는 그 위에 겹친다(`Hud`, `Sheet`, `Popup`, `ActionBar`). 전장은 미리보기/재생과 카메라 구도(`set_compact`)만 바꾼다. UI 빈 곳의 탭이 전장으로 가도록 컨테이너는 `mouse_filter = IGNORE`. 나머지 UI 는 `scripts/main.gd` 가 코드로 만든다. 규칙은 `scripts/core/` 에 두고 UI 에서 직접 계산하지 않는다.
 10. 글꼴을 프로젝트 설정(`gui/theme/custom_font`)으로 지정하지 않는다. 새 클론의 첫 임포트 때 로드 오류가 난다. 장면의 theme 로 적용한다.
