@@ -141,6 +141,19 @@ func test_tap_enemy_shows_detail_and_tap_own_unit_edits() -> void:
 	free_later(main)
 
 
+func test_shop_sheet_fits_content() -> void:
+	var main := _spawn()
+	var h: float = -main.sheet.offset_top - main.SHEET_BOTTOM
+	check(h < main.SHEET_OPEN_HEIGHT, "상점 시트는 최대 높이보다 낮음: %d" % h)
+	check(absf(h - main.sheet_fit_height()) < 1.0, "내용 높이에 딱 맞음")
+	check(main.battle_view._framing_target < 1.0, "남는 공간만큼 전장을 크게")
+	main._on_field_tapped("b", 0)
+	check_eq(-main.sheet.offset_top - main.SHEET_BOTTOM, main.SHEET_OPEN_HEIGHT, "정찰은 최대 높이")
+	check_eq(BattleView3D.framing_for_bottom(1160.0), 0.0)
+	check_eq(BattleView3D.framing_for_bottom(590.0), 1.0)
+	free_later(main)
+
+
 func test_default_sheet_is_shop() -> void:
 	var main := _spawn()
 	check(main.inspect_unit == -1 and main.inspect_enemy == -1, "처음엔 상점")

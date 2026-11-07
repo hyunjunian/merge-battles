@@ -14,6 +14,7 @@ const S := preload("res://scripts/ui/ui_style.gd")
 const SHEET_OPEN_HEIGHT := 580.0
 const SHEET_CLOSED_HEIGHT := 70.0
 const SHEET_BOTTOM := 112.0
+const S_VIEW_HEIGHT := 1280.0
 
 var state: GameState
 var records: Dictionary = {}
@@ -145,7 +146,6 @@ func refresh() -> void:
 		else:
 			_add_result_panel()
 		return
-	_layout_sheet(true, sheet_open)
 	_build_sheet_head()
 	_refresh_field()
 	if inspect_enemy >= 0:
@@ -159,20 +159,33 @@ func refresh() -> void:
 	if message != "":
 		var m := _label(message, 17, S.RED, true)
 		content.add_child(m)
+	# 상점은 내용 높이에 딱 맞추고(아래 여백 없음), 유닛 정보·정찰은 최대 높이에 스크롤
+	_layout_sheet(true, sheet_open, inspect_unit < 0 and inspect_enemy < 0)
 	var fight := _action_button("전투 시작", _on_fight, "GoButton", "sword")
 	fight.disabled = not state.can_fight()
 	action_bar.add_child(fight)
 
 
-## 시트 보이기/펼치기와 카메라 구도를 맞춘다.
-func _layout_sheet(show: bool, expanded: bool) -> void:
+## 시트 보이기/펼치기와 카메라 구도를 맞춘다. fit 이면 시트 높이를 내용에 맞춘다.
+func _layout_sheet(show: bool, expanded: bool, fit: bool = false) -> void:
 	sheet.visible = show
 	scroll.visible = expanded
 	var h := SHEET_OPEN_HEIGHT if expanded else SHEET_CLOSED_HEIGHT
+	if show and expanded and fit:
+		h = minf(SHEET_OPEN_HEIGHT, sheet_fit_height())
 	sheet.offset_top = -(SHEET_BOTTOM + h)
+	var bottom := (S_VIEW_HEIGHT - SHEET_BOTTOM - h) if show else BattleView3D.FULL_BOTTOM_Y
 	# 첫 화면은 바로, 그 뒤엔 부드럽게 카메라를 옮긴다.
-	battle_view.set_compact(show and expanded, _laid_out)
+	battle_view.set_framing(BattleView3D.framing_for_bottom(bottom), _laid_out)
 	_laid_out = true
+
+
+## 시트 머리 + 내용 + 여백을 합친 높이
+func sheet_fit_height() -> float:
+	var sb := sheet.get_theme_stylebox("panel")
+	var box_sep := float((sheet.get_child(0) as VBoxContainer).get_theme_constant("separation"))
+	var margins := sb.get_minimum_size().y if sb != null else 0.0
+	return sheet_head.get_combined_minimum_size().y + box_sep + content.get_combined_minimum_size().y + margins
 
 
 func _build_sheet_head() -> void:

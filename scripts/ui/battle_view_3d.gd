@@ -30,6 +30,8 @@ const CAM_DIR := Vector3(0, 0.9397, 0.3420)  # 바라보는 점에서 카메라 
 const CAM_FULL := {"dist": 16.5, "v_offset": -0.25}
 const CAM_COMPACT := {"dist": 30.0, "v_offset": -8.75}
 const CAM_LERP := 8.0
+const FULL_BOTTOM_Y := 1160.0
+const COMPACT_BOTTOM_Y := 590.0
 
 enum Mode { PREVIEW, PLAYING }
 
@@ -224,10 +226,21 @@ func _end_drag() -> void:
 
 
 func set_compact(compact: bool, animate: bool = true) -> void:
-	_framing_target = 1.0 if compact else 0.0
+	set_framing(1.0 if compact else 0.0, animate)
+
+
+## 0 = FULL ~ 1 = COMPACT 사이 구도
+func set_framing(value: float, animate: bool = true) -> void:
+	_framing_target = clampf(value, 0.0, 1.0)
 	if not animate:
 		framing = _framing_target
 	_apply_camera()
+
+
+## 아래 UI 의 윗변(화면 y, 720x1280 기준) → 그 위 공간에 전장이 들어오는 구도 값.
+## FULL 은 아래 버튼 위(1160), COMPACT 는 열린 시트 위(590) 에 맞춘 값이라 그 사이를 선형으로 잇는다.
+static func framing_for_bottom(bottom_y: float) -> float:
+	return clampf((FULL_BOTTOM_Y - bottom_y) / (FULL_BOTTOM_Y - COMPACT_BOTTOM_Y), 0.0, 1.0)
 
 
 func _apply_camera() -> void:
