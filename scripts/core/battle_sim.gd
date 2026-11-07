@@ -20,7 +20,8 @@ const HALF_W := 4.0
 const HALF_D := 7.0
 const START_Z := 4.0
 const SPACING := 2.2
-const RADIUS := 0.45
+## 유닛 반지름 (화면 모형: 고리 반지름 0.5 x 크기 1.3 = 0.65)
+const RADIUS := 0.65
 
 const BASE_HP := 40.0
 const BASE_ATK := 1.0
@@ -96,26 +97,44 @@ static func slot_position(side: String, slot: int) -> Vector2:
 
 ## 우리 진영: 가운데 선에서 OWN_MIN_Z 이상 떨어진 +z 쪽 절반. 유닛끼리는 MIN_GAP 이상 떨어뜨린다.
 const OWN_MIN_Z := 1.0
-const MIN_GAP := 1.0
+## 배치할 때 유닛 중심 사이 최소 거리 = 모형 지름 + 틈 (비스듬한 카메라에서 앞 유닛 몸통이 뒤 유닛을 가리지 않게)
+const MIN_GAP := RADIUS * 2.0 + 0.35
 
 
 static func clamp_own(p: Vector2) -> Vector2:
 	return Vector2(clampf(p.x, -HALF_W, HALF_W), clampf(p.y, OWN_MIN_Z, HALF_D))
 
 
-## p 를 우리 진영 안으로 넣고, others 와 MIN_GAP 보다 가까우면 밀어낸다.
+static func overlaps(p: Vector2, others: Array[Vector2]) -> bool:
+	for o in others:
+		if p.distance_to(o) < MIN_GAP - 0.001:
+			return true
+	return false
+
+
+## p 를 우리 진영 안으로 넣고, others 와 겹치면(MIN_GAP 보다 가까우면) 가장 가까운 빈자리로 옮긴다.
+## 빈자리는 p 둘레를 점점 넓게 돌며 찾는다. 진영이 꽉 차 못 찾으면 진영 안으로만 넣어 돌려준다.
 static func place_own(p: Vector2, others: Array[Vector2]) -> Vector2:
 	var q := clamp_own(p)
-	for _iter in 8:
-		var moved := false
-		for o in others:
-			var d := q.distance_to(o)
-			if d < MIN_GAP:
-				var dir := (q - o).normalized() if d > 0.001 else Vector2(1, 0)
-				q = clamp_own(o + dir * MIN_GAP)
-				moved = true
-		if not moved:
-			break
+	if not overlaps(q, others):
+		return q
+	var step := 0.15
+	var r := step
+	while r <= HALF_W * 2.0 + HALF_D:
+		var n := maxi(8, int(TAU * r / step))
+		var best := Vector2.INF
+		var best_d := INF
+		for k in n:
+			var c := clamp_own(q + Vector2.from_angle(TAU * k / n) * r)
+			if overlaps(c, others):
+				continue
+			var d := c.distance_to(q)
+			if d < best_d:
+				best_d = d
+				best = c
+		if best != Vector2.INF:
+			return best
+		r += step
 	return q
 
 

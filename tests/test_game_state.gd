@@ -198,3 +198,28 @@ func test_new_units_do_not_stack() -> void:
 	for i in gs.units.size():
 		for j in range(i + 1, gs.units.size()):
 			check(gs.units[i].start_pos("a").distance_to(gs.units[j].start_pos("a")) >= BattleSim.MIN_GAP - 0.01, "새 유닛끼리 안 겹침")
+
+
+func test_placement_never_overlaps_even_when_crowded() -> void:
+	var gs := GameState.new(1)
+	gs.gold = 999
+	for i in BattleSim.SLOT_COUNT - 1:
+		gs.shop[0] = {"kind": "unit", "id": "recruit"}
+		gs.buy(0)
+	# 모두 같은 구석으로 끌어 놓아도 서로 겹치지 않는다
+	for i in gs.units.size():
+		gs.move_unit(i, Vector2(BattleSim.HALF_W, BattleSim.HALF_D))
+	for i in gs.units.size():
+		var p := gs.units[i].start_pos("a")
+		check(p.y >= BattleSim.OWN_MIN_Z and absf(p.x) <= BattleSim.HALF_W, "진영 안")
+		for j in range(i + 1, gs.units.size()):
+			var d := p.distance_to(gs.units[j].start_pos("a"))
+			check(d >= BattleSim.MIN_GAP - 0.01, "겹치지 않음 %d-%d: %.2f" % [i, j, d])
+
+
+func test_place_own_picks_nearest_free_spot() -> void:
+	var others: Array[Vector2] = [Vector2(0, 3)]
+	var q := BattleSim.place_own(Vector2(0.1, 3.0), others)
+	check(not BattleSim.overlaps(q, others), "빈자리")
+	check(q.distance_to(Vector2(0.1, 3.0)) < BattleSim.MIN_GAP + 0.2, "가까운 곳")
+	check_eq(BattleSim.place_own(Vector2(2, 5), others), Vector2(2, 5), "빈 곳은 그대로")

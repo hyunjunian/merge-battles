@@ -205,7 +205,7 @@ func _gui_input(event: InputEvent) -> void:
 			accept_event()
 		elif not _press.is_empty():
 			if _dragging:
-				var p := BattleSim.clamp_own(ground_point(mb.position))
+				var p := BattleSim.place_own(ground_point(mb.position), _other_positions(int(_press["index"])))
 				_end_drag()
 				unit_moved.emit(int(_press["index"]), p)
 			else:
@@ -219,12 +219,24 @@ func _gui_input(event: InputEvent) -> void:
 			_dragging = true
 			_own_zone.visible = true
 		if _dragging:
-			var p := BattleSim.clamp_own(ground_point(mm.position))
+			# 끄는 동안에도 다른 유닛과 겹치지 않는 자리로 따라온다
+			var p := BattleSim.place_own(ground_point(mm.position), _other_positions(int(_press["index"])))
 			var u: Dictionary = _units[_press["side"]][_press["index"]]
 			u["pos"] = Vector3(p.x, 0, p.y)
 			_update_units()
 			_overlay.queue_redraw()
 		accept_event()
+
+
+## 끄는 유닛을 뺀 우리 유닛들의 바닥 위치
+func _other_positions(except: int) -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	for i in _units[draggable_side].size():
+		if i == except:
+			continue
+		var p: Vector3 = _units[draggable_side][i]["pos"]
+		out.append(Vector2(p.x, p.z))
+	return out
 
 
 func _end_drag() -> void:
