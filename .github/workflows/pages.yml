@@ -70,10 +70,13 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     steps:
+      # GitHub Pages 가 파일 동기화(syncing_files)에서 가끔 오래 멈춘다. 이 액션은 최대 10분만 기다리므로
+      # 실패하면 한 번 더 시도한다.
       - id: deployment
         uses: actions/deploy-pages@v4
-        with:
-          # 첫 배포는 파일 동기화(syncing_files)가 10분(기본값)을 넘기기도 한다.
-          timeout: 1800000
+        continue-on-error: true
+      - id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v4
