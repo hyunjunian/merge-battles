@@ -4,7 +4,7 @@ extends RefCounted
 ##
 ## 규칙
 ## - 체력 100, 1라운드부터 시작. 매 라운드 전투를 하고, 승패와 상관없이 다음 라운드로 간다.
-## - 지면 그 라운드 수만큼 체력이 준다. 0 이하가 되면 게임 오버(기록 저장).
+## - 지면 라운드 수 × 상대 남은 체력 비율(남은 체력 합 / 최대 체력 합)만큼 체력이 준다(올림). 0 이하가 되면 게임 오버(기록 저장).
 ## - 라운드가 끝날 때마다 돈을 받는다: 기본 BASE_INCOME + 이자. 연승·연패 보너스는 없다(연속 기록은 표시만).
 ## - 상점에서 유닛과 아이템을 산다. 유닛은 사는 즉시 전장에 나가고 빼려면 팔아야 한다.
 ##   아이템은 보유함에 들어가고, 유닛 가방에 넣고 뺄 수 있다. 판매가는 항상 구매가보다 낮다.
@@ -57,8 +57,10 @@ static func interest_for(gold_value: int) -> int:
 
 
 ## 지면 잃는 체력 = 그 라운드 수
-static func hp_loss_for(round_value: int) -> int:
-	return maxi(1, round_value)
+## 지면 잃는 체력 = 라운드 수 × 상대 남은 체력 비율, 올림 (지면 최소 1)
+static func hp_loss_for(round_value: int, enemy_left_ratio: float = 1.0) -> int:
+	var raw := float(round_value) * clampf(enemy_left_ratio, 0.0, 1.0)
+	return maxi(1, ceili(raw - 0.000001))
 
 
 # ── 전장 자리 ─────────────────────────────────────────
@@ -421,28 +423,46 @@ static func surviving(result: Dictionary, side: int) -> int:
 	return n
 
 
+## 그 편의 남은 체력 비율: 전투 중 체력 합을 가장 많이 깎았을 때(최저점) 기준
+## = 최저 (남은 체력 합) / 최대 체력 합 (0~1). 회복·부활로 다시 올라도 최저점으로 잰다. 유닛이 없으면 1.
+static func remaining_ratio(result: Dictionary, side: int) -> float:
+	var maxes: PackedFloat32Array = result["max_a"] if side == 0 else result["max_b"]
+	var total := 0.0
+	for m in maxes:
+		total += m
+	if total <= 0.0:
+		return 1.0
+	var lowest := total
+	for frame: Array in result["frames"]:
+		var left := 0.0
+		for i in maxes.size():
+			left += clampf(BattleSim.frame_hp(frame, side, i), 0.0, maxes[i])
+		lowest = minf(lowest, left)
+	return lowest / total
+
+
 ## 전투 결과 반영(우리가 a 쪽). apply_outcome 참고.
 func apply_result(result: Dictionary) -> Dictionary:
 	var won: bool = result["winner"] == "a"
-	return apply_outcome(won)
+	return apply_outcome(won, 0.0 if won else remaining_ratio(result, 1))
 
 
-## 승패로 체력(지면 라운드 수만큼)·연속 기록·수입·다음 라운드·상점을 갱신한다.
+## 승패와 (졌을 때) 상대 남은 체력 비율로 체력·수입·다음 라운드·상점을 갱신한다.
 ## 출전 풀 수집(봇끼리 대전)에서도 양쪽 플레이어에 각각 쓴다.
-## 반환: {won, hp_loss, income, interest, streak, round_played, game_over, champion}
-func apply_outcome(won: bool) -> Dictionary:
+## 반환: {won, hp_loss, enemy_left, income, interest, streak, round_played, game_over, champion}
+func apply_outcome(won: bool, enemy_left_ratio: float = 1.0) -> Dictionary:
 	var played := round_no
 	# 이번 라운드 우리 세팅을 남긴다 (풀이 끝난 뒤 상대 후보)
 	if opponents != null and not units.is_empty():
 		history.append(OpponentPool.snapshot(units))
-	var loss := 0 if won else hp_loss_for(played)
+	var loss := 0 if won else hp_loss_for(played, enemy_left_ratio)
 	hp -= loss
 	if won:
 		streak = streak + 1 if streak > 0 else 1
 	else:
 		streak = streak - 1 if streak < 0 else -1
 	var summary := {
-		"won": won, "hp_loss": loss, "streak": streak,
+		"won": won, "hp_loss": loss, "enemy_left": 0.0 if won else enemy_left_ratio, "streak": streak,
 		"round_played": played, "income": 0, "interest": 0, "game_over": false, "champion": false,
 	}
 	if hp <= 0:

@@ -97,7 +97,8 @@ func test_loss_reduces_hp_by_round() -> void:
 	var gs := GameState.new(1)
 	var s := gs.apply_result(_result("b", 2))
 	check(not s["won"])
-	check_eq(s["hp_loss"], 1, "1라운드 패배 → 체력 -1")
+	check_eq(s["hp_loss"], 1, "1라운드 × 1/3 → 올림 1")
+	check(absf(float(s["enemy_left"]) - 1.0 / 3.0) < 0.001, "상대 남은 체력 비율")
 	check_eq(gs.hp, 99)
 	check_eq(gs.round_no, 2, "져도 다음 라운드")
 	var hp := gs.hp
@@ -307,3 +308,31 @@ func test_items_on_other_units() -> void:
 	check(not gs.is_taken_from_other(dagger, 1), "같은 가방 안 이동은 아님")
 	check(gs.equip_flexible(dagger, 0, Vector2i(0, 0)))
 	check_eq(gs.unit_of(dagger), 0)
+
+
+func test_hp_loss_scales_with_enemy_hp_left() -> void:
+	check_eq(GameState.hp_loss_for(10, 1.0), 10, "완패: 라운드 수 그대로")
+	check_eq(GameState.hp_loss_for(10, 0.5), 5)
+	check_eq(GameState.hp_loss_for(10, 0.3), 3, "딱 떨어지면 그대로")
+	check_eq(GameState.hp_loss_for(10, 0.31), 4, "소수점은 올림")
+	check_eq(GameState.hp_loss_for(10, 0.01), 1, "아슬아슬해도 최소 1")
+	check_eq(GameState.hp_loss_for(7, 0.0), 1, "지면 최소 1")
+	var gs := GameState.new(4)
+	gs.round_no = 12
+	var hp := gs.hp
+	var s := gs.apply_result(_result("b", 1, 4))  # 4명 중 1명이 반 체력: 5 / 40
+	check_eq(s["hp_loss"], 2, "12 × 0.125 = 1.5 → 2")
+	check_eq(gs.hp, hp - 2)
+
+
+func test_remaining_ratio_uses_lowest_point() -> void:
+	# 상대 2명(최대 10씩): 중간에 합 4 까지 깎였다가 회복해서 12 로 끝남 → 4 / 20
+	var a := _unit_frame(10.0)
+	var f := func(h0: float, h1: float) -> Array:
+		var b := PackedFloat32Array()
+		b.append_array(_unit_frame(h0))
+		b.append_array(_unit_frame(h1))
+		return [a, b]
+	var r := {"winner": "b", "frames": [f.call(10.0, 10.0), f.call(4.0, 0.0), f.call(6.0, 6.0)],
+		"max_a": PackedFloat32Array([10.0]), "max_b": PackedFloat32Array([10.0, 10.0])}
+	check(absf(GameState.remaining_ratio(r, 1) - 0.2) < 0.0001, "가장 많이 깎았을 때 기준")

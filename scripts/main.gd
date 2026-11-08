@@ -652,7 +652,7 @@ func _add_enemy_detail() -> void:
 		if Synergy.level(tag, counts[tag]) > 0:
 			syn.append(Synergy.describe(tag, counts[tag]))
 	content.add_child(_label("상대 시너지: " + (", ".join(syn) if not syn.is_empty() else "없음"), 15, S.GOLD, true))
-	content.add_child(_label("상대 팀 유닛 %d · 총가치 %d원 · 지면 체력 -%d" % [
+	content.add_child(_label("상대 팀 유닛 %d · 총가치 %d원 · 지면 체력 최대 -%d" % [
 		enemies.size(), EnemyGen.total_value(enemies), GameState.hp_loss_for(state.round_no)], 15, S.MUTED, true))
 
 
@@ -665,7 +665,8 @@ func _add_result_panel() -> void:
 	box.add_child(_label("ROUND %d" % summary["round_played"], 18, S.MUTED, false, true, true))
 	box.add_child(_label("승리!" if won else "패배", 64, accent, false, true, true))
 	if not won:
-		box.add_child(_line_icon("heart", "체력 -%d  (라운드 %d)" % [summary["hp_loss"], summary["round_played"]], S.RED))
+		box.add_child(_line_icon("heart", "체력 -%d" % summary["hp_loss"], S.RED))
+		box.add_child(_label("라운드 %d × 상대 남은 체력 %d%%" % [summary["round_played"], roundi(float(summary.get("enemy_left", 1.0)) * 100.0)], 16, S.MUTED, false, false, true))
 	var income_text := "+%d원" % summary["income"]
 	var parts: PackedStringArray = ["기본 %d" % GameState.BASE_INCOME]
 	if int(summary.get("interest", 0)) > 0:
@@ -1094,6 +1095,10 @@ func _setup_demo(kind: String) -> void:
 		state.gold = maxi(state.gold, 12)  # 이자도 보이게
 		last_result = state.fight()
 		summary = state.apply_result(last_result)
+		# lose=1 : 패배 결과 화면 (스크린샷용)
+		if OS.get_cmdline_user_args().has("lose=1"):
+			state.round_no -= 1
+			summary = state.apply_outcome(false, 0.37)
 	elif kind == "victory":
 		state.hp = 64
 		if state.opponents != null:

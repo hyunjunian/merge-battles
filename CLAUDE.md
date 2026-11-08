@@ -10,7 +10,7 @@ Godot 4.7.2.stable · GDScript 게임 프로젝트. Claude Code 클라우드 세
 - 핵심 재미: 오래 살아남기 위한 여러 전략을 실험하고(탐색) 좋은 전략을 찾아 쓰며(활용) 그 능력을 기르는 것. 생존에 영향을 주는 요소는 **다양하면서도 직관적**이어야 한다.
 - 큰 구조: **돈을 적재적소에 쓴다 → 전투에서의 체력 소모를 최소화한다.**
   - 돈을 쓸 곳: 모아서 이자 받기(유보도 쓰임), 상점에서 유닛·아이템 사기/팔기, 상점 새로고침, 상대 새로고침, …
-  - 체력이 소모될 곳: 전투 패배, …
+  - 체력이 소모될 곳: 전투 패배(라운드 수 × 상대 남은 체력 비율 — 전투 중 가장 많이 깎았을 때 기준, 올림 — `GameState.hp_loss_for`/`remaining_ratio`), …
   - 새 요소는 이 두 목록 중 어디에 들어가는지로 설명한다.
 - 정한 것: 돈을 체력으로 바로 바꾸는 길은 있어도 없어도 된다(필수 아님). 연승·연패는 역할이 없다(보상·표시 없음).
 - 출전 풀을 넘기면 "최장 생존" 축하 후 계속되고, 상대는 라운드마다 강해진다(끝은 체력 0 뿐).
@@ -34,7 +34,7 @@ Godot 4.7.2.stable · GDScript 게임 프로젝트. Claude Code 클라우드 세
 | `assets/` | 그림·소리·글꼴. 한글 글꼴은 `assets/theme.tres`(메인 장면 theme)로 적용 |
 | `tests/` | `test_*.gd` 테스트(애드온 없는 자체 실행기 `run_tests.gd`) |
 | `tools/check.sh` | 임포트 → 문법 검사 → 테스트 |
-| `tools/screenshot.sh` | 장면을 실행해 `build/screenshots/<장면>.png` 저장 (xvfb 필요). 추가 인자 `demo=start\|shop\|units\|enemy\|battle\|result\|gameover` 로 데모 화면, `t=<초>` 로 전투 시점, `inspect=a1\|b0` 로 전투 중 상세, `info=1` 로 그 가방 첫 아이템 정보, `demo=units move=1` 아이템 옮기기 확인 창, `demo=victory` 최장 생존 축하 화면 |
+| `tools/screenshot.sh` | 장면을 실행해 `build/screenshots/<장면>.png` 저장 (xvfb 필요). 추가 인자 `demo=start\|shop\|units\|enemy\|battle\|result\|gameover` 로 데모 화면, `demo=result lose=1` 패배 결과, `t=<초>` 로 전투 시점, `inspect=a1\|b0` 로 전투 중 상세, `info=1` 로 그 가방 첫 아이템 정보, `demo=units move=1` 아이템 옮기기 확인 창, `demo=victory` 최장 생존 축하 화면 |
 | 웹 `#seed=N` | 배포 주소 끝에 붙이면 그 시드로 시작(같은 상점·상대 재현, 브라우저 시험용) |
 | `tools/build_pool.gd` | 상대 출전 풀 만들기: `godot --headless --path . -s res://tools/build_pool.gd -- [N] [seed]` → `data/opponent_pool.json` |
 
