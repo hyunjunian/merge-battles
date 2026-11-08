@@ -105,11 +105,9 @@ func test_loss_reduces_hp_by_round() -> void:
 	check_eq(gs.hp, hp, "이기면 체력 그대로")
 
 
-func test_income_grows_with_streaks() -> void:
-	check_eq(GameState.income_for(1), GameState.BASE_INCOME, "1연승은 보너스 없음")
-	check_eq(GameState.income_for(3), GameState.BASE_INCOME + 2, "3연승 +2")
-	check_eq(GameState.income_for(-4), GameState.BASE_INCOME + 3, "4연패 +3")
-	check_eq(GameState.income_for(50), GameState.BASE_INCOME + GameState.MAX_STREAK_BONUS, "상한")
+func test_income_has_no_streak_bonus() -> void:
+	check_eq(GameState.income_for(3), GameState.BASE_INCOME, "연승 보너스 없음")
+	check_eq(GameState.income_for(-4), GameState.BASE_INCOME, "연패 보너스 없음")
 	var gs := GameState.new(1)
 	var g := gs.gold
 	gs.apply_result(_result("a", 0))

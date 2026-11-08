@@ -5,7 +5,7 @@ extends RefCounted
 ## 규칙
 ## - 체력 100, 1라운드부터 시작. 매 라운드 전투를 하고, 승패와 상관없이 다음 라운드로 간다.
 ## - 지면 그 라운드 수만큼 체력이 준다. 0 이하가 되면 게임 오버(기록 저장).
-## - 라운드가 끝날 때마다 돈을 받는다: 기본 BASE_INCOME + 연승/연패 보너스(연속 라운드 수 - 1, 최대 MAX_STREAK_BONUS).
+## - 라운드가 끝날 때마다 돈을 받는다: 기본 BASE_INCOME + 이자. 연승·연패 보너스는 없다(연속 기록은 표시만).
 ## - 상점에서 유닛과 아이템을 산다. 유닛은 사는 즉시 전장에 나가고 빼려면 팔아야 한다.
 ##   아이템은 보유함에 들어가고, 유닛 가방에 넣고 뺄 수 있다. 판매가는 항상 구매가보다 낮다.
 ## - 시작: 돈 START_GOLD, 1x2 유닛(견습병) 하나.
@@ -14,7 +14,6 @@ const START_HP := 100
 const START_GOLD := 4
 const START_UNIT := "recruit"
 const BASE_INCOME := 3
-const MAX_STREAK_BONUS := 5
 ## 상점 칸 수. 칸마다 UNIT_CHANCE 확률로 유닛, 아니면 아이템 (개수·순서 고정 없음)
 const SHOP_SIZE := 5
 const UNIT_CHANCE := 0.4
@@ -47,13 +46,9 @@ func _init(seed_value: int = 0) -> void:
 
 # ── 돈 · 체력 규칙 ────────────────────────────────────
 
-## 연속 라운드 수에 비례한 보너스 (2연속부터 +1, 3연속 +2, ...)
-static func streak_bonus(streak_value: int) -> int:
-	return clampi(absi(streak_value) - 1, 0, MAX_STREAK_BONUS)
-
-
-static func income_for(streak_value: int) -> int:
-	return BASE_INCOME + streak_bonus(streak_value)
+## 라운드 수입 (이자 제외). 연승·연패 보너스는 없다.
+static func income_for(_streak_value: int) -> int:
+	return BASE_INCOME
 
 
 ## 이자: 전투가 끝났을 때 가진 돈 10원마다 1원, 최대 MAX_INTEREST
@@ -393,7 +388,7 @@ func apply_result(result: Dictionary) -> Dictionary:
 
 ## 승패로 체력(지면 라운드 수만큼)·연속 기록·수입·다음 라운드·상점을 갱신한다.
 ## 출전 풀 수집(봇끼리 대전)에서도 양쪽 플레이어에 각각 쓴다.
-## 반환: {won, hp_loss, income, bonus, interest, streak, round_played, game_over, victory}
+## 반환: {won, hp_loss, income, interest, streak, round_played, game_over, victory}
 func apply_outcome(won: bool) -> Dictionary:
 	var played := round_no
 	var loss := 0 if won else hp_loss_for(played)
@@ -404,19 +399,18 @@ func apply_outcome(won: bool) -> Dictionary:
 		streak = streak - 1 if streak < 0 else -1
 	var summary := {
 		"won": won, "hp_loss": loss, "streak": streak,
-		"round_played": played, "income": 0, "bonus": 0, "interest": 0, "game_over": false, "victory": false,
+		"round_played": played, "income": 0, "interest": 0, "game_over": false, "victory": false,
 	}
 	if hp <= 0:
 		hp = 0
 		game_over = true
 		summary["game_over"] = true
 		return summary
-	# 수입 = 기본 + 연승/연패 보너스 + 이자(전투 끝에 가진 돈 기준)
+	# 수입 = 기본 + 이자(전투 끝에 가진 돈 기준)
 	var interest := interest_for(gold)
 	var income := income_for(streak) + interest
 	gold += income
 	summary["income"] = income
-	summary["bonus"] = streak_bonus(streak)
 	summary["interest"] = interest
 	round_no += 1
 	refill_shop()

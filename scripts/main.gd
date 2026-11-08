@@ -671,8 +671,6 @@ func _add_result_panel() -> void:
 		box.add_child(_line_icon("heart", "체력 -%d  (라운드 %d)" % [summary["hp_loss"], summary["round_played"]], S.RED))
 	var income_text := "+%d원" % summary["income"]
 	var parts: PackedStringArray = ["기본 %d" % GameState.BASE_INCOME]
-	if summary["bonus"] > 0:
-		parts.append("%s %d" % [streak_text(summary["streak"]), summary["bonus"]])
 	if int(summary.get("interest", 0)) > 0:
 		parts.append("이자 %d" % summary["interest"])
 	if parts.size() > 1:
@@ -1100,11 +1098,11 @@ func _setup_demo(kind: String) -> void:
 		summary = state.apply_result(last_result)
 	elif kind == "victory":
 		state.hp = 64
-		summary = {"won": true, "hp_loss": 0, "streak": 5, "round_played": 24, "income": 7, "bonus": 4, "game_over": false, "victory": true}
+		summary = {"won": true, "hp_loss": 0, "streak": 5, "round_played": 24, "income": 3, "game_over": false, "victory": true}
 		records = {"best_round": 24, "runs": 6, "last_round": 24}
 	elif kind == "gameover":
 		state.hp = 1
-		summary = {"won": false, "hp_loss": 9, "streak": -3, "round_played": 9, "income": 0, "bonus": 0, "game_over": true}
+		summary = {"won": false, "hp_loss": 9, "streak": -3, "round_played": 9, "income": 0, "game_over": true}
 		records = {"best_round": 12, "runs": 5, "last_round": 9}
 	refresh()
 
