@@ -1,6 +1,6 @@
 extends Control
 ## 메인 장면. 3D 전장이 화면 전체에 깔려 있고, 그 위에 UI 가 자리마다 겹쳐 있다.
-##   위: HUD (라운드·연승/연패·상대 시너지)
+##   위: HUD (라운드·상대 바꾸기·상대 시너지)
 ##   아래: 시트. 기본은 상점. 전장의 우리 유닛을 누르면 그 유닛 정보(가방 편성), 적을 누르면 정찰.
 ##         접을 수 있고, 열리면 전장 카메라가 위쪽으로 물러난다.
 ##   맨 아래: 행동 버튼. 가운데: 전투 결과·게임 오버 배너.
@@ -70,13 +70,6 @@ static func unit_color(pack: Backpack) -> Color:
 static func dps(s: Dictionary) -> float:
 	return float(s["atk"]) * float(s["spd"])
 
-
-static func streak_text(streak: int) -> String:
-	if streak >= 2:
-		return "%d연승" % streak
-	if streak <= -2:
-		return "%d연패" % -streak
-	return ""
 
 
 ## 전장 미리보기 명단 (유닛 자리 기준)
@@ -279,9 +272,6 @@ func _build_header() -> void:
 	title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
-	var st := streak_text(state.streak)
-	if st != "":
-		row.add_child(_badge("flame" if state.streak > 0 else "skull", st, Color(1.0, 0.6, 0.2) if state.streak > 0 else S.MUTED))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(spacer)
