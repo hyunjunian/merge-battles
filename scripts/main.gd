@@ -151,8 +151,8 @@ func refresh() -> void:
 	_build_header()
 	if not summary.is_empty() and not battling:
 		_layout_sheet(false)
-		if summary.get("victory", false):
-			_add_victory_panel()
+		if summary.get("champion", false) and not summary.get("game_over", false):
+			_add_champion_panel()
 		elif summary.get("game_over", false):
 			_add_game_over_panel()
 		else:
@@ -286,6 +286,13 @@ func _build_header() -> void:
 	chips.add_theme_constant_override("h_separation", 6)
 	chips.add_theme_constant_override("v_separation", 4)
 	_add_synergy_chips(chips, Synergy.count_tags(state.enemy_team()), S.RED, "상대")
+	# 풀이 끝난 뒤: 상대 강화 표시
+	var mult := state.enemy_power_mult()
+	if mult > 1.0:
+		var power := PanelContainer.new()
+		power.add_theme_stylebox_override("panel", S.box(Color(S.RED.darkened(0.5), 0.95), S.RED, 2, 10, -1, 4.0))
+		power.add_child(_label("강화 +%d%%" % roundi((mult - 1.0) * 100.0), 14, Color.WHITE, false, true))
+		chips.add_child(power)
 	header.add_child(chips)
 	_clear(own_synergy)
 	_add_synergy_chips(own_synergy, Synergy.count_tags(state.units), S.GOLD, "우리")
@@ -618,7 +625,7 @@ func _add_enemy_detail() -> void:
 		return
 	var pack := enemies[inspect_enemy]
 	var counts := Synergy.count_tags(enemies)
-	var s := BattleSim.unit_stats(pack, Synergy.bonuses(counts))
+	var s := BattleSim.scale_stats(BattleSim.unit_stats(pack, Synergy.bonuses(counts)), state.enemy_power_mult())
 	var cell := cell_size_for(pack)
 	var view := BackpackView.new()
 	view.setup(pack, inspect_enemy, cell, false)
@@ -685,20 +692,21 @@ func _add_game_over_panel() -> void:
 	action_bar.add_child(_action_button("새로 시작", _on_new_run, "PrimaryButton", "refresh"))
 
 
-## 우승: 출전 풀에 다음 라운드 상대가 없다 (모든 라운드를 이겨 냄)
-func _add_victory_panel() -> void:
+## 최장 생존 축하: 출전 풀의 마지막 라운드까지 살아남았다. 게임은 강화된 상대와 계속된다.
+func _add_champion_panel() -> void:
 	var panel := _banner(S.GOLD)
 	var box: VBoxContainer = panel.get_child(0)
 	box.add_child(_center(GameIcon.make("star", 72, S.GOLD)))
-	box.add_child(_label("우승!", 64, S.GOLD, false, true, true))
-	box.add_child(_label("라운드 %d 까지 모든 상대를 이겼습니다" % summary["round_played"], 24, S.TEXT, false, true, true))
+	box.add_child(_label("최장 생존!", 60, S.GOLD, false, true, true))
 	var pool_meta: Dictionary = state.opponents.meta if state.opponents != null else {}
-	if pool_meta.has("players"):
-		box.add_child(_label("봇 %d명 중 마지막까지 살아남은 상대를 꺾었습니다" % int(pool_meta["players"]), 18, S.MUTED, false, false, true))
+	var players := int(pool_meta.get("players", 0))
+	var who := "봇 %d명보다 " % players if players > 0 else ""
+	box.add_child(_label("%s오래 살아남았습니다 (라운드 %d)" % [who, summary["round_played"]], 22, S.TEXT, true, true, true))
+	box.add_child(_label("이제 상대가 라운드마다 %d%%씩 강해집니다" % roundi(GameState.ENDLESS_POWER_PER_ROUND * 100), 17, S.MUTED, true, false, true))
 	box.add_child(_line_icon("heart", "남은 체력 %d" % state.hp, S.GREEN))
-	box.add_child(_line_icon("flag", "%d번째 판" % records.get("runs", 0), S.MUTED))
+	box.add_child(_line_icon("coin", "+%d원" % summary["income"], S.GOLD))
 	popup.add_child(panel)
-	action_bar.add_child(_action_button("새로 시작", _on_new_run, "PrimaryButton", "refresh"))
+	action_bar.add_child(_action_button("계속 살아남기 · 라운드 %d" % state.round_no, _on_continue, "PrimaryButton", "flag"))
 
 
 # ── 입력 처리 ─────────────────────────────────────────
@@ -989,7 +997,7 @@ func _on_battle_finished(_winner: String) -> void:
 		return
 	battling = false
 	summary = state.apply_result(last_result)
-	if summary["game_over"] or summary.get("victory", false):
+	if summary["game_over"]:
 		records = Records.submit(summary["round_played"], records_path)
 	refresh()
 
@@ -1088,7 +1096,10 @@ func _setup_demo(kind: String) -> void:
 		summary = state.apply_result(last_result)
 	elif kind == "victory":
 		state.hp = 64
-		summary = {"won": true, "hp_loss": 0, "streak": 5, "round_played": 24, "income": 3, "game_over": false, "victory": true}
+		if state.opponents != null:
+			state.round_no = state.opponents.max_round() + 1
+			state.champion = true
+		summary = {"won": true, "hp_loss": 0, "streak": 5, "round_played": 33, "income": 3, "game_over": false, "champion": true}
 		records = {"best_round": 24, "runs": 6, "last_round": 24}
 	elif kind == "gameover":
 		state.hp = 1

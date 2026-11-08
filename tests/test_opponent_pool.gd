@@ -59,9 +59,22 @@ func test_game_uses_pool_round_and_wins_at_the_end() -> void:
 	check(team[0].def_id in ["recruit", "scout"], "1라운드 출전 세팅 중 하나")
 	check_eq(gs.enemy_team()[0].def_id, team[0].def_id, "같은 라운드엔 같은 상대")
 	var s := gs.apply_outcome(true)
-	check(s["victory"], "2라운드 데이터가 없으면 우승")
-	check(gs.victory)
-	check(not gs.can_fight(), "우승 뒤엔 더 싸우지 않음")
+	check(s["champion"], "2라운드 데이터가 없으면 최장 생존 축하")
+	check(gs.champion)
+	check(gs.can_fight(), "축하 뒤에도 계속 싸움")
+	check(gs.is_endless())
+	check_eq(gs.enemy_power_mult(), 1.1, "풀을 넘긴 첫 라운드 +10%")
+	var cands := gs.endless_candidates()
+	check_eq(cands.size(), 3, "풀 마지막 세팅 2 + 우리 지난 세팅 1")
+	check(not gs.enemy_team().is_empty())
+	var base: float = BattleSim.team_stats(gs.enemy_team(), "b")[0]["hp"]
+	check(absf(float(gs.enemy_fighters()[0]["hp"]) - base * 1.1) < 0.01, "강화된 체력")
+	gs.apply_outcome(true)
+	check_eq(gs.round_no, 3)
+	check_eq(gs.enemy_power_mult(), 1.2)
+	var s3 := gs.apply_outcome(false)
+	check(not s3["champion"], "축하는 한 번만")
+	check_eq(s3["hp_loss"], 3)
 
 
 func test_bundled_pool_exists_and_is_complete() -> void:

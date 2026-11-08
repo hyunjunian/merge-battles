@@ -169,10 +169,14 @@ func enemy_reroll_cost() -> int:
 
 ## 상대 새로고침: 전투 전 enemy_reroll_cost() 원으로 이번 라운드 상대를 같은 라운드의 다른 출전으로 바꾼다
 func can_reroll_enemy() -> bool:
-	if game_over or victory or gold < enemy_reroll_cost():
+	if game_over or gold < enemy_reroll_cost():
 		return false
-	# 풀에 이 라운드 출전이 하나뿐이면 바꿀 상대가 없다
-	return opponents == null or opponents.entry_count(round_no) >= 2
+	# 후보가 하나뿐이면 바꿀 상대가 없다
+	if opponents == null:
+		return true
+	if is_endless():
+		return endless_candidates().size() >= 2
+	return opponents.entry_count(round_no) >= 2
 
 
 func reroll_enemy() -> bool:
@@ -337,8 +341,14 @@ func rotate(item: Item) -> bool:
 
 ## 상대 출전 풀 (OpponentPool). 없으면 EnemyGen 으로 상대를 만든다.
 var opponents: OpponentPool = null
-## 풀에 다음 라운드 상대가 없어 이긴 상태
-var victory: bool = false
+## 출전 풀의 마지막 라운드까지 살아남았다 (최장 생존. 게임은 계속된다)
+var champion: bool = false
+## 우리 팀의 지난 출전 세팅 (라운드마다 하나). 풀이 끝난 뒤 상대 후보가 된다.
+var history: Array = []
+## 풀이 끝난 뒤 상대 후보: 풀의 마지막 ENDLESS_TAIL 라운드 세팅 + 우리 최근 ENDLESS_TAIL 라운드 세팅
+const ENDLESS_TAIL := 5
+## 풀이 끝난 뒤 넘긴 라운드마다 상대 체력·공격력 +10%
+const ENDLESS_POWER_PER_ROUND := 0.10
 var _enemy_rerolls: int = 0
 var _enemy_rerolls_round: int = 0
 var _enemy_cache_key: int = 0
@@ -347,11 +357,14 @@ var _enemy_cache: Array[Backpack] = []
 
 func enemy_team() -> Array[Backpack]:
 	var rerolls := enemy_reroll_count()
-	var key := hash([round_no, run_seed, opponents != null, rerolls])
+	var key := hash([round_no, run_seed, opponents != null, rerolls, history.size()])
 	if _enemy_cache_key != key or _enemy_cache.is_empty():
 		_enemy_cache_key = key
 		if opponents != null and opponents.has_round(round_no):
 			_enemy_cache = opponents.team_for(round_no, run_seed, rerolls)
+		elif is_endless():
+			var cands := endless_candidates()
+			_enemy_cache = OpponentPool.build_team(cands[OpponentPool.pick(cands.size(), hash([run_seed, round_no, "endless"]), rerolls)])
 		else:
 			_enemy_cache = EnemyGen.generate(round_no, run_seed if rerolls == 0 else hash([run_seed, rerolls]))
 	# 같은 라운드 안에서는 같은 팀 (화면이 여러 번 물어봐도)
@@ -361,13 +374,41 @@ func enemy_team() -> Array[Backpack]:
 	return out
 
 
+## 출전 풀이 끝난 라운드인가 (그 뒤 상대: endless_candidates, 강화 enemy_power_mult)
+func is_endless() -> bool:
+	return opponents != null and opponents.max_round() > 0 and round_no > opponents.max_round() \
+		and not endless_candidates().is_empty()
+
+
+func endless_candidates() -> Array:
+	var out: Array = opponents.tail_entries(ENDLESS_TAIL) if opponents != null else []
+	out.append_array(history.slice(maxi(0, history.size() - ENDLESS_TAIL)))
+	return out
+
+
+## 상대 강화 배수: 풀의 마지막 라운드를 넘긴 라운드마다 +10% (34라운드 1.1, 40라운드 1.7 …)
+func enemy_power_mult() -> float:
+	if opponents == null or opponents.max_round() <= 0 or round_no <= opponents.max_round():
+		return 1.0
+	return 1.0 + ENDLESS_POWER_PER_ROUND * (round_no - opponents.max_round())
+
+
+## 상대 팀 전투 능력치 (강화 포함)
+func enemy_fighters() -> Array[Dictionary]:
+	var mult := enemy_power_mult()
+	var out: Array[Dictionary] = []
+	for s in BattleSim.team_stats(enemy_team(), "b"):
+		out.append(BattleSim.scale_stats(s, mult))
+	return out
+
+
 func can_fight() -> bool:
 	# 유닛이 없어도 전투는 시작할 수 있다 (바로 진다)
-	return not game_over and not victory
+	return not game_over
 
 
 func fight() -> Dictionary:
-	return BattleSim.simulate(BattleSim.team_stats(units, "a"), BattleSim.team_stats(enemy_team(), "b"))
+	return BattleSim.simulate(BattleSim.team_stats(units, "a"), enemy_fighters())
 
 
 static func surviving(result: Dictionary, side: int) -> int:
@@ -388,9 +429,12 @@ func apply_result(result: Dictionary) -> Dictionary:
 
 ## 승패로 체력(지면 라운드 수만큼)·연속 기록·수입·다음 라운드·상점을 갱신한다.
 ## 출전 풀 수집(봇끼리 대전)에서도 양쪽 플레이어에 각각 쓴다.
-## 반환: {won, hp_loss, income, interest, streak, round_played, game_over, victory}
+## 반환: {won, hp_loss, income, interest, streak, round_played, game_over, champion}
 func apply_outcome(won: bool) -> Dictionary:
 	var played := round_no
+	# 이번 라운드 우리 세팅을 남긴다 (풀이 끝난 뒤 상대 후보)
+	if opponents != null and not units.is_empty():
+		history.append(OpponentPool.snapshot(units))
 	var loss := 0 if won else hp_loss_for(played)
 	hp -= loss
 	if won:
@@ -399,7 +443,7 @@ func apply_outcome(won: bool) -> Dictionary:
 		streak = streak - 1 if streak < 0 else -1
 	var summary := {
 		"won": won, "hp_loss": loss, "streak": streak,
-		"round_played": played, "income": 0, "interest": 0, "game_over": false, "victory": false,
+		"round_played": played, "income": 0, "interest": 0, "game_over": false, "champion": false,
 	}
 	if hp <= 0:
 		hp = 0
@@ -414,8 +458,8 @@ func apply_outcome(won: bool) -> Dictionary:
 	summary["interest"] = interest
 	round_no += 1
 	refill_shop()
-	# 출전 풀에 다음 라운드 상대가 없으면 우승
-	if opponents != null and not opponents.has_round(round_no):
-		victory = true
-		summary["victory"] = true
+	# 출전 풀의 마지막 라운드를 넘기면 최장 생존 축하 (게임은 계속)
+	if opponents != null and not champion and opponents.max_round() > 0 and round_no > opponents.max_round():
+		champion = true
+		summary["champion"] = true
 	return summary

@@ -30,6 +30,16 @@ func entry_count(round_no: int) -> int:
 	return (rounds[round_no] as Array).size() if rounds.has(round_no) else 0
 
 
+## 마지막 k 라운드의 출전 세팅 모두 (풀이 끝난 뒤 상대 후보)
+func tail_entries(k: int) -> Array:
+	var out: Array = []
+	var last := max_round()
+	for r in range(maxi(1, last - k + 1), last + 1):
+		if rounds.has(r):
+			out.append_array(rounds[r])
+	return out
+
+
 func max_round() -> int:
 	var m := 0
 	for k: int in rounds.keys():
@@ -46,11 +56,15 @@ func team_for(round_no: int, seed_value: int, rerolls: int = 0) -> Array[Backpac
 ## k 라운드 상대로 고를 출전 번호 (run 시드로 고정, 없으면 -1).
 ## 새로고침할 때마다(rerolls) 같은 라운드의 다른 출전으로 바뀐다 (바로 전과는 늘 다름).
 func pick_index(round_no: int, seed_value: int, rerolls: int = 0) -> int:
-	var n := entry_count(round_no)
+	return pick(entry_count(round_no), hash([seed_value, round_no, "pool"]), rerolls)
+
+
+## n 개 중 하나 (seed_key 로 고정). 새로고침할 때마다 바로 전과 다른 번호. n 이 0 이면 -1.
+static func pick(n: int, seed_key: int, rerolls: int = 0) -> int:
 	if n == 0:
 		return -1
 	var rng := RandomNumberGenerator.new()
-	rng.seed = hash([seed_value, round_no, "pool"])
+	rng.seed = seed_key
 	var idx := rng.randi_range(0, n - 1)
 	if n < 2:
 		return idx

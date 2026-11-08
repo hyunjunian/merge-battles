@@ -61,6 +61,16 @@ static func unit_stats(pack: Backpack, bonus: Dictionary = {}) -> Dictionary:
 
 
 ## 유닛 목록 → 전투 능력치 목록 (시너지 반영). 각 항목의 "pos" 는 그 유닛 자리의 시작 위치.
+## 강화: 체력·공격력에 배수 (풀이 끝난 뒤 상대)
+static func scale_stats(s: Dictionary, mult: float) -> Dictionary:
+	if mult == 1.0:
+		return s
+	var out := s.duplicate()
+	out["hp"] = float(s["hp"]) * mult
+	out["atk"] = float(s["atk"]) * mult
+	return out
+
+
 static func team_stats(packs: Array[Backpack], side: String = "a") -> Array[Dictionary]:
 	var bonus := Synergy.bonuses(Synergy.count_tags(packs))
 	var out: Array[Dictionary] = []
