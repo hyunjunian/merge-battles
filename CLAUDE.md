@@ -46,6 +46,7 @@ Godot 4.7.2.stable · GDScript 게임 프로젝트. Claude Code 클라우드 세
 | `tools/check.sh` | 임포트 → 문법 검사 → 테스트 |
 | `tools/screenshot.sh` | 장면을 실행해 `build/screenshots/<장면>.png` 저장 (xvfb 필요). 추가 인자 `demo=start\|shop\|units\|enemy\|battle\|result\|gameover` 로 데모 화면, `demo=result lose=1` 패배 결과, `t=<초>` 로 전투 시점, `inspect=a1\|b0` 로 전투 중 상세, `info=1` 로 그 가방 첫 아이템 정보, `demo=units move=1` 아이템 옮기기 확인 창, `demo=victory` 최장 생존 축하 화면 |
 | 웹 `#seed=N` | 배포 주소 끝에 붙이면 그 시드로 시작(같은 상점·상대 재현, 브라우저 시험용) |
+| `tools/measure_skill.gd` | 운과 실력 측정(설계 기준 1): `godot --headless --path . -s res://tools/measure_skill.gd -- [판 수] [seed]` → 정책(`SkillMeter.POLICIES`: 무작위 `RandomBot` / 기본 봇 `Bot`)별로 같은 시드로 한 판씩, 라운드 5개 구간마다 승패 중 정책 차이로 설명되는 몫(eta²)을 "실력 몫"으로 출력, `build/skill_report.md` 저장 |
 | `tools/build_pool.gd` | 상대 출전 풀 만들기: `godot --headless --path . -s res://tools/build_pool.gd -- [N] [seed]` → `data/opponent_pool.json` |
 
 ## 규칙
