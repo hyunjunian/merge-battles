@@ -112,8 +112,9 @@ func test_income_streak_bonus() -> void:
 	check_eq(GameState.income_for(3), GameState.BASE_INCOME + 1, "3연승 +1")
 	check_eq(GameState.income_for(-5), GameState.BASE_INCOME + 1, "5연패 +1")
 	check_eq(GameState.income_for(-6), GameState.BASE_INCOME + 2, "6연패 +2")
-	check_eq(GameState.income_for(9), GameState.BASE_INCOME + 3, "9연승 +3")
-	check_eq(GameState.income_for(30), GameState.BASE_INCOME + GameState.MAX_STREAK_BONUS, "최대 3원")
+	check_eq(GameState.income_for(9), GameState.BASE_INCOME + 1, "연승은 최대 1원")
+	check_eq(GameState.income_for(-9), GameState.BASE_INCOME + 3, "9연패 +3")
+	check_eq(GameState.income_for(-30), GameState.BASE_INCOME + GameState.MAX_STREAK_BONUS, "연패 최대 3원")
 	var gs := GameState.new(1)
 	var g := gs.gold
 	gs.apply_result(_result("a", 0))
