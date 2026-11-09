@@ -82,7 +82,7 @@ static func roster(packs: Array[Backpack], side: String) -> Array[Dictionary]:
 			"color": unit_color(pack),
 			"ranged": BattleSim.is_ranged(BattleSim.unit_stats(pack, bonus)),
 			"empty": false,
-			"label": pack.display_name(),
+			"label": pack.display_name() + ("" if pack.star == 1 else " " + pack.star_text()),
 		})
 	return out
 
@@ -419,7 +419,13 @@ func _detail_grid(left_w: float, name_box: Control, info_box: Control, bag_box: 
 func _name_box(pack: Backpack, color: Color, with_actions: bool) -> Control:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
-	v.add_child(_label(pack.display_name(), 26, color, false, true))
+	var title := HBoxContainer.new()
+	title.add_theme_constant_override("separation", 6)
+	title.add_child(_label(pack.display_name(), 26, color, false, true))
+	title.add_child(_label(pack.star_text(), 22, S.GOLD, false, true))
+	v.add_child(title)
+	if pack.star < Backpack.MAX_STAR:
+		v.add_child(_label("%s 하나 더 → %s" % [pack.star_text(), "★".repeat(pack.star + 1)], 14, S.MUTED))
 	if with_actions:
 		var strip := _button("모두 빼기", _on_unequip_all)
 		strip.disabled = pack.is_empty()
@@ -580,6 +586,10 @@ func _offer_card(index: int, offer: Dictionary) -> Control:
 		v.add_child(_center(ShapeIcon.for_unit(d["size"], d["color"], minf(18.0, 44.0 / float(d["size"].y)))))
 		v.add_child(_label(d["name"], 20, S.TEXT, false, true, true))
 		stats = d["stats"]
+		# 같은 유닛이 이미 있으면 사는 순간 합쳐진다
+		var target := state.merge_target(offer["id"])
+		if target >= 0:
+			v.add_child(_label("합치기 " + "★".repeat(state.units[target].star + 1), 15, S.GOLD, false, true, true))
 		card.tooltip_text = Pricing.describe_stats(stats, float(stats.get("range", 0.0)))
 	else:
 		var item := Item.new(offer["id"])
@@ -1053,6 +1063,7 @@ func _setup_demo(kind: String) -> void:
 	state.units.append(Backpack.new("archer"))
 	state.units[2].slot = 2
 	# 자유 배치: 병사는 앞 가운데, 견습병은 왼쪽, 궁수는 오른쪽 뒤
+	state.units[1].set_star(2)  # 합치기 예시: 병사 ★★
 	state.move_unit(1, Vector2(0.0, 1.8))
 	state.move_unit(0, Vector2(-2.0, 2.4))
 	state.move_unit(2, Vector2(2.8, 6.2))
@@ -1063,7 +1074,7 @@ func _setup_demo(kind: String) -> void:
 		state.equip(item, p[0], state.units[p[0]].find_spot(item))
 	state.inventory.append_array([Item.new("venom_fang"), Item.new("herb_pouch")])
 	state.shop = [
-		{"kind": "unit", "id": "mage"}, {"kind": "unit", "id": "knight"},
+		{"kind": "unit", "id": "mage"}, {"kind": "unit", "id": "recruit"},
 		{"kind": "item", "id": "storm_rod"}, {"kind": "item", "id": "healing_grail"}, {"kind": "item", "id": "hawk_lens"},
 	]
 	if kind == "units":

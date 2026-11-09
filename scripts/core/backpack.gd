@@ -19,6 +19,11 @@ var field_pos: Vector2 = Vector2.ZERO
 var has_field_pos: bool = false
 ## 각 항목: {"item": Item, "pos": Vector2i}
 var placements: Array[Dictionary] = []
+## 별(합치기 단계) 1~MAX_STAR. 같은 유닛 같은 별 2개 → 별 하나 위.
+## 별마다 체력·공격력 x STAR_STAT_MULT, 가방 가로·세로 +1 칸.
+var star: int = 1
+const MAX_STAR := 3
+const STAR_STAT_MULT := 1.8
 
 
 ## 전장 시작 위치
@@ -46,6 +51,28 @@ func def() -> Dictionary:
 	return UnitDB.get_def(def_id)
 
 
+## 별 단계를 정한다: 가방이 별마다 가로·세로 1칸씩 커진다 (들어 있던 아이템 자리는 그대로)
+func set_star(value: int) -> void:
+	star = clampi(value, 1, MAX_STAR)
+	if UnitDB.has(def_id):
+		var s: Vector2i = def()["size"]
+		width = s.x + star - 1
+		height = s.y + star - 1
+
+
+## 이 유닛이 몇 마리를 합친 것인가 (별 1 = 1, 별 2 = 2, 별 3 = 4)
+func copies() -> int:
+	return 1 << (star - 1)
+
+
+func stat_mult() -> float:
+	return pow(STAR_STAT_MULT, star - 1)
+
+
+func star_text() -> String:
+	return "★".repeat(star)
+
+
 func display_name() -> String:
 	return def().get("name", "유닛")
 
@@ -54,20 +81,25 @@ func color() -> Color:
 	return def().get("color", Color.GRAY)
 
 
+## 들인 값: 유닛 가격 x 합친 마리 수
 func cost() -> int:
-	return int(def().get("cost", 0))
+	return int(def().get("cost", 0)) * copies()
 
 
 func sell_price() -> int:
 	return Pricing.sell_price(cost())
 
 
-## 유닛 기본 능력치 (아이템 제외)
+## 유닛 기본 능력치 (아이템 제외). 별이 오르면 체력·공격력이 커진다.
 func base_stats() -> Dictionary:
 	var out := {}
 	var base: Dictionary = def().get("stats", {})
 	for k: String in base.keys():
 		out[k] = float(base[k])
+	var m := stat_mult()
+	for k: String in ["hp", "atk"]:
+		if out.has(k):
+			out[k] *= m
 	return out
 
 

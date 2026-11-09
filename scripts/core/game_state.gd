@@ -83,6 +83,51 @@ func has_free_slot() -> bool:
 	return units.size() < BattleSim.SLOT_COUNT
 
 
+## 합치기: 같은 유닛·같은 별이 이미 있으면 그 유닛 번호 (없으면 -1). 별 MAX 는 합치지 않는다.
+func merge_target(def_id: String, star: int = 1, except: Backpack = null) -> int:
+	if star >= Backpack.MAX_STAR:
+		return -1
+	for i in units.size():
+		var u := units[i]
+		if u != except and u.def_id == def_id and u.star == star:
+			return i
+	return -1
+
+
+## 새 유닛을 들인다: 같은 유닛·같은 별이 있으면 합쳐 별을 올리고(연쇄), 없으면 전장에 세운다.
+## 합쳐진 유닛 번호를 돌려준다 (합치지 않았으면 -1).
+func add_unit(pack: Backpack) -> int:
+	var target := merge_target(pack.def_id, pack.star)
+	if target < 0:
+		_deploy(pack)
+		return -1
+	var keep := units[target]
+	_absorb(keep, pack)
+	# 연쇄: 별이 오른 유닛과 같은 별이 또 있으면 다시 합친다 (먼저 있던 쪽이 남는다)
+	var next := merge_target(keep.def_id, keep.star, keep)
+	while next >= 0:
+		var other := units[next]
+		var first := keep if units.find(keep) < next else other
+		var second := other if first == keep else keep
+		units.erase(second)
+		_absorb(first, second)
+		keep = first
+		next = merge_target(keep.def_id, keep.star, keep)
+	return units.find(keep)
+
+
+## other 를 keep 에 합친다: keep 의 별 +1(가방 커짐), other 의 아이템은 keep 가방 빈 곳으로(없으면 보유함)
+func _absorb(keep: Backpack, other: Backpack) -> void:
+	keep.set_star(keep.star + 1)
+	for item in other.items():
+		other.remove(item)
+		var spot := keep.find_spot(item)
+		if spot != Backpack.NO_SPOT:
+			keep.place(item, spot)
+		else:
+			inventory.append(item)
+
+
 func _deploy(pack: Backpack) -> void:
 	pack.slot = free_slot()
 	pack.field_pos = place_unit_pos(BattleSim.slot_position("a", pack.slot), pack)
@@ -137,7 +182,7 @@ func buy_block_reason(index: int) -> String:
 		return "팔린 물건입니다"
 	if gold < offer_cost(shop[index]):
 		return "돈이 부족합니다"
-	if shop[index]["kind"] == "unit" and not has_free_slot():
+	if shop[index]["kind"] == "unit" and not has_free_slot() and merge_target(shop[index]["id"]) < 0:
 		return "전장에 자리가 없습니다 (최대 %d)" % BattleSim.SLOT_COUNT
 	return ""
 
@@ -148,7 +193,7 @@ func buy(index: int) -> bool:
 	var offer := shop[index]
 	gold -= offer_cost(offer)
 	if offer["kind"] == "unit":
-		_deploy(Backpack.new(offer["id"]))
+		add_unit(Backpack.new(offer["id"]))
 	else:
 		inventory.append(Item.new(offer["id"]))
 	shop[index] = {}

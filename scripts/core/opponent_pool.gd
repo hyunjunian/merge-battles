@@ -84,7 +84,10 @@ static func snapshot(units: Array[Backpack]) -> Array:
 			var it: Item = pl["item"]
 			var pos: Vector2i = pl["pos"]
 			items.append([it.def_id, pos.x, pos.y, 1 if it.rotated else 0])
-		out.append({"u": u.def_id, "x": snappedf(p.x, 0.01), "z": snappedf(p.y, 0.01), "i": items})
+		var d := {"u": u.def_id, "x": snappedf(p.x, 0.01), "z": snappedf(p.y, 0.01), "i": items}
+		if u.star > 1:
+			d["s"] = u.star
+		out.append(d)
 	return out
 
 
@@ -94,6 +97,7 @@ static func build_team(entry: Array) -> Array[Backpack]:
 	for i in entry.size():
 		var d: Dictionary = entry[i]
 		var pack := Backpack.new(String(d["u"]))
+		pack.set_star(int(d.get("s", 1)))
 		pack.slot = i
 		pack.field_pos = Vector2(float(d["x"]), float(d["z"]))
 		pack.has_field_pos = true

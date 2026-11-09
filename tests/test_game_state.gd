@@ -49,10 +49,11 @@ func test_buying_unit_deploys_immediately() -> void:
 func test_field_has_slot_limit() -> void:
 	var gs := GameState.new(1)
 	gs.gold = 999
-	for i in BattleSim.SLOT_COUNT - 1:
-		gs.shop[0] = {"kind": "unit", "id": "recruit"}
-		check(gs.buy(0), "자리 있음 %d" % i)
-	gs.shop[0] = {"kind": "unit", "id": "recruit"}
+	# 서로 다른 유닛으로 채운다 (같은 유닛은 합쳐진다)
+	for id: String in ["scout", "soldier", "archer", "knight", "mage"]:
+		gs.shop[0] = {"kind": "unit", "id": id}
+		check(gs.buy(0), "자리 있음 %s" % id)
+	gs.shop[0] = {"kind": "unit", "id": "giant"}
 	check(gs.buy_block_reason(0) != "", "자리 꽉 참")
 	check(not gs.buy(0))
 
