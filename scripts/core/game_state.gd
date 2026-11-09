@@ -5,7 +5,7 @@ extends RefCounted
 ## 규칙
 ## - 체력 100, 1라운드부터 시작. 매 라운드 전투를 하고, 승패와 상관없이 다음 라운드로 간다.
 ## - 지면 라운드 수 × 상대 남은 체력 비율(남은 체력 합 / 최대 체력 합)만큼 체력이 준다(올림). 0 이하가 되면 게임 오버(기록 저장).
-## - 라운드가 끝날 때마다 돈을 받는다: 기본 BASE_INCOME + 이자. 연승·연패 보너스는 없다(연속 기록은 표시만).
+## - 라운드가 끝날 때마다 돈을 받는다: 기본 BASE_INCOME + 연승·연패 보너스(연속 수 ÷ 3 내림, 최대 MAX_STREAK_BONUS) + 이자.
 ## - 상점에서 유닛과 아이템을 산다. 유닛은 사는 즉시 전장에 나가고 빼려면 팔아야 한다.
 ##   아이템은 보유함에 들어가고, 유닛 가방에 넣고 뺄 수 있다. 판매가는 항상 구매가보다 낮다.
 ## - 시작: 돈 START_GOLD, 1x2 유닛(견습병) 하나.
@@ -14,6 +14,8 @@ const START_HP := 100
 const START_GOLD := 4
 const START_UNIT := "recruit"
 const BASE_INCOME := 3
+const STREAK_STEP := 3
+const MAX_STREAK_BONUS := 3
 ## 상점 칸 수. 칸마다 UNIT_CHANCE 확률로 유닛, 아니면 아이템 (개수·순서 고정 없음)
 const SHOP_SIZE := 5
 const UNIT_CHANCE := 0.4
@@ -46,9 +48,14 @@ func _init(seed_value: int = 0) -> void:
 
 # ── 돈 · 체력 규칙 ────────────────────────────────────
 
-## 라운드 수입 (이자 제외). 연승·연패 보너스는 없다.
-static func income_for(_streak_value: int) -> int:
-	return BASE_INCOME
+## 연승·연패 보너스: 연속 수 ÷ STREAK_STEP 내림, 최대 MAX_STREAK_BONUS (3연속 +1, 6연속 +2, 9연속부터 +3)
+static func streak_bonus(streak_value: int) -> int:
+	return mini(absi(streak_value) / STREAK_STEP, MAX_STREAK_BONUS)
+
+
+## 라운드 수입 (이자 제외) = 기본 + 연승·연패 보너스
+static func income_for(streak_value: int) -> int:
+	return BASE_INCOME + streak_bonus(streak_value)
 
 
 ## 이자: 전투가 끝났을 때 가진 돈 10원마다 1원, 최대 MAX_INTEREST
@@ -515,12 +522,13 @@ func apply_outcome(won: bool, enemy_left_ratio: float = 1.0) -> Dictionary:
 		game_over = true
 		summary["game_over"] = true
 		return summary
-	# 수입 = 기본 + 이자(전투 끝에 가진 돈 기준)
+	# 수입 = 기본 + 연승·연패 보너스 + 이자(전투 끝에 가진 돈 기준)
 	var interest := interest_for(gold)
 	var income := income_for(streak) + interest
 	gold += income
 	summary["income"] = income
 	summary["interest"] = interest
+	summary["bonus"] = streak_bonus(streak)
 	round_no += 1
 	refill_shop()
 	# 출전 풀의 마지막 라운드를 넘기면 최장 생존 축하 (게임은 계속)

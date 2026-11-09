@@ -681,6 +681,9 @@ func _add_result_panel() -> void:
 		box.add_child(_label("라운드 %d × 상대 남은 체력 %d%%" % [summary["round_played"], roundi(float(summary.get("enemy_left", 1.0)) * 100.0)], 16, S.MUTED, false, false, true))
 	var income_text := "+%d원" % summary["income"]
 	var parts: PackedStringArray = ["기본 %d" % GameState.BASE_INCOME]
+	if int(summary.get("bonus", 0)) > 0:
+		var st: int = summary["streak"]
+		parts.append("%d%s %d" % [absi(st), "연승" if st > 0 else "연패", summary["bonus"]])
 	if int(summary.get("interest", 0)) > 0:
 		parts.append("이자 %d" % summary["interest"])
 	if parts.size() > 1:
