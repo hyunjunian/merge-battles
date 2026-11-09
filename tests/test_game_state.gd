@@ -119,9 +119,12 @@ func test_income_streak_bonus() -> void:
 	gs.apply_result(_result("a", 0))
 	gs.apply_result(_result("a", 0))
 	check_eq(gs.streak, 2)
-	check_eq(gs.gold, g + GameState.income_for(1) + GameState.income_for(2), "연승 수입")
-	gs.apply_result(_result("b", 1))
+	check_eq(gs.gold, g + GameState.income_for(1) + GameState.income_for(2) + 2 * GameState.WIN_BONUS, "이기면 승리 보너스 +1")
+	gs.gold = 0
+	var s := gs.apply_result(_result("b", 1))
 	check_eq(gs.streak, -1, "지면 연패로 바뀜")
+	check_eq(s["win_bonus"], 0, "지면 승리 보너스 없음")
+	check_eq(gs.gold, GameState.BASE_INCOME)
 
 
 func test_game_over_when_hp_runs_out() -> void:
@@ -296,7 +299,7 @@ func test_interest_per_ten_gold() -> void:
 	gs.gold = 23
 	var s := gs.apply_outcome(true)
 	check_eq(s["interest"], 2, "전투 끝에 가진 23원 → 이자 2원")
-	check_eq(s["income"], GameState.income_for(s["streak"]) + 2, "수입에 이자 포함")
+	check_eq(s["income"], GameState.income_for(s["streak"]) + GameState.WIN_BONUS + 2, "수입에 승리 보너스·이자 포함")
 	check_eq(gs.gold, 23 + s["income"])
 
 
