@@ -36,6 +36,8 @@ var battling: bool = false
 var speed: int = 1
 const MAX_SPEED := 16
 var last_result: Dictionary = {}
+## 전투에 나선 유닛 이름 {"a": [...], "b": [...]} (결과 화면의 기여도 표시용. 전투 뒤엔 상대가 바뀌므로 미리 저장)
+var last_names: Dictionary = {}
 ## 전투가 끝난 뒤 보여 줄 GameState.apply_result() 요약
 var summary: Dictionary = {}
 var _laid_out: bool = false
@@ -684,8 +686,64 @@ func _add_result_panel() -> void:
 	if parts.size() > 1:
 		income_text += "  (%s)" % " + ".join(parts)
 	box.add_child(_line_icon("coin", income_text, S.GOLD))
+	_add_contribution(box)
 	popup.add_child(panel)
 	action_bar.add_child(_action_button("다음 라운드 %d" % state.round_no, _on_continue, "PrimaryButton", "flag"))
+
+
+## 지금 전투에 나설 양 팀 유닛 이름 (별 포함)
+func battle_names() -> Dictionary:
+	var out := {"a": [], "b": []}
+	for u in state.units:
+		out["a"].append(u.display_name() + ("" if u.star == 1 else " " + u.star_text()))
+	for u in state.enemy_team():
+		out["b"].append(u.display_name() + ("" if u.star == 1 else " " + u.star_text()))
+	return out
+
+
+## 결과 화면: 유닛별 기여도 (준 피해 막대, 받은 피해, 회복+보호막)
+func _add_contribution(box: VBoxContainer) -> void:
+	if last_result.is_empty() or not last_result.has("events"):
+		return
+	var c := BattleReport.contribution(last_result)
+	var max_dealt := 1.0
+	for side: String in ["a", "b"]:
+		for row: Dictionary in c[side]:
+			max_dealt = maxf(max_dealt, float(row["dealt"]))
+	box.add_child(HSeparator.new())
+	box.add_child(_label("유닛 기여도", 20, S.GOLD, false, true, true))
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 4)
+	for h: String in ["유닛", "준 피해", "받은 피해", "회복·보호"]:
+		grid.add_child(_label(h, 13, S.MUTED, false, true))
+	for side: String in ["a", "b"]:
+		var names: Array = last_names.get(side, [])
+		var mvp := BattleReport.top(c[side], "dealt")
+		var col := S.GOLD if side == "a" else S.RED.lightened(0.3)
+		for i in c[side].size():
+			var row: Dictionary = c[side][i]
+			var nm: String = names[i] if i < names.size() else "유닛 %d" % (i + 1)
+			grid.add_child(_label(("우리 " if side == "a" else "상대 ") + nm + (" 👑" if i == mvp else ""), 15, col, false, i == mvp))
+			grid.add_child(_dealt_bar(float(row["dealt"]), max_dealt, col))
+			grid.add_child(_label("%d" % roundi(row["taken"]), 15, S.TEXT))
+			var support := float(row["healed"]) + float(row["shielded"])
+			grid.add_child(_label("%d" % roundi(support) if support >= 1.0 else "-", 15, S.GREEN if support >= 1.0 else S.MUTED))
+	box.add_child(_center(grid))
+
+
+func _dealt_bar(v: float, max_v: float, col: Color) -> Control:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	var bar := ColorRect.new()
+	bar.color = col
+	bar.custom_minimum_size = Vector2(maxf(2.0, 120.0 * v / max_v), 12)
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(bar)
+	h.add_child(_label("%d" % roundi(v), 15, S.TEXT))
+	h.custom_minimum_size = Vector2(170, 0)
+	return h
 
 
 func _add_game_over_panel() -> void:
@@ -699,6 +757,7 @@ func _add_game_over_panel() -> void:
 	if summary["round_played"] >= best:
 		record_text = "새 최고 기록! · %d번째 판" % records.get("runs", 0)
 	box.add_child(_line_icon("star", record_text, S.GOLD))
+	_add_contribution(box)
 	popup.add_child(panel)
 	action_bar.add_child(_action_button("새로 시작", _on_new_run, "PrimaryButton", "refresh"))
 
@@ -985,6 +1044,7 @@ func _start_battle(start_time: float) -> void:
 	var colors_b: Array[Color] = []
 	for u in state.enemy_team():
 		colors_b.append(unit_color(u))
+	last_names = battle_names()
 	last_result = state.fight()
 	battling = true
 	refresh()
@@ -1104,6 +1164,7 @@ func _setup_demo(kind: String) -> void:
 		return
 	elif kind == "result":
 		state.gold = maxi(state.gold, 12)  # 이자도 보이게
+		last_names = battle_names()
 		last_result = state.fight()
 		summary = state.apply_result(last_result)
 		# lose=1 : 패배 결과 화면 (스크린샷용)

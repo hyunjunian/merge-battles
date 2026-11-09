@@ -390,3 +390,18 @@ func test_move_item_from_other_unit_asks_first() -> void:
 	check(not second.has_item(dagger), "원래 유닛에서 빠짐")
 	check(main._confirm_layer == null)
 	free_later(main)
+
+
+func test_result_shows_unit_contribution() -> void:
+	var main := _spawn()
+	main._on_fight()
+	main.battle_view.skip()
+	check(not main.summary.is_empty(), "전투가 끝나 결과")
+	var labels: Array = main.popup.find_children("*", "Label", true, false)
+	var found := false
+	for l in labels:
+		if (l as Label).text == "유닛 기여도":
+			found = true
+	check(found, "결과 화면에 유닛 기여도")
+	check_eq(main.last_names["a"].size(), main.state.units.size(), "전투에 나선 우리 유닛 이름")
+	free_later(main)

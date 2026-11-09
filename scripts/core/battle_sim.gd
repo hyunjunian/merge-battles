@@ -260,6 +260,7 @@ static func _attack(f: Dictionary, side: String, i: int, allies: Array, foes: Ar
 	if sk["poison_dps"] > 0.0:
 		foe["poison_dps"] = maxf(foe["poison_dps"], float(sk["poison_dps"]))
 		foe["poison_left"] = float(sk["poison_dur"])
+		foe["poison_src"] = i
 	var thorns: float = foe["sk"]["thorns"]
 	if thorns > 0.0:
 		events.append({"t": t, "kind": "thorns", "side": foe_side, "src": target, "dst": i, "dmg": thorns})
@@ -312,7 +313,7 @@ static func _tick_poison(f: Dictionary, poisoner_side: String, idx: int, t: floa
 		if f["poison_left"] <= 0.0:
 			f["poison_dps"] = 0.0
 		var my_side := "b" if poisoner_side == "a" else "a"
-		events.append({"t": t, "kind": "poison", "side": poisoner_side, "src": -1, "dst": idx, "dmg": dmg})
+		events.append({"t": t, "kind": "poison", "side": poisoner_side, "src": int(f["poison_src"]), "dst": idx, "dmg": dmg})
 		_apply_damage(f, dmg, my_side, idx, t, events)
 
 
@@ -448,7 +449,7 @@ static func _make_fighters(side: String, team: Array[Dictionary]) -> Array:
 			"cd": 0.5 / spd,
 			# 스킬 상태
 			"sk": sk, "shield": float(sk["shield"]), "started": false, "attacks": 0,
-			"poison_dps": 0.0, "poison_left": 0.0, "poison_acc": 0.0, "poison_tick": 0.0,
+			"poison_dps": 0.0, "poison_left": 0.0, "poison_acc": 0.0, "poison_tick": 0.0, "poison_src": -1,
 			"heal_timer": float(sk["heal_cd"]), "fire_timer": float(sk["fireball_cd"]) * 0.5,
 			"raged": false, "revived": false,
 		})

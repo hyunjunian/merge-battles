@@ -38,7 +38,7 @@ Godot 4.7.2.stable · GDScript 게임 프로젝트. Claude Code 클라우드 세
 | `project.godot` | 프로젝트 설정. 메인 장면 `res://scenes/main.tscn` |
 | `scenes/` | 장면(`.tscn`) |
 | `scripts/` | GDScript |
-| `scripts/core/` | 게임 규칙 (UI 없음, 테스트 대상): 유닛·아이템 정의, 스킬(`skills.gd`), 가격·상점 확률, 가방, 시너지, 전투, 게임 상태(로그라이크), 기록, 상대 출전 풀(`opponent_pool.gd`, 수집 `pool_builder.gd` + 봇 `bot.gd`), 예비 적 생성(`enemy_gen.gd`, 풀이 없을 때만) |
+| `scripts/core/` | 게임 규칙 (UI 없음, 테스트 대상): 전투 뒤 유닛별 기여도(`battle_report.gd`: 준·받은 피해, 회복·보호막 — 결과·게임 오버 화면에 표시), 유닛·아이템 정의, 스킬(`skills.gd`), 가격·상점 확률, 가방, 시너지, 전투, 게임 상태(로그라이크), 기록, 상대 출전 풀(`opponent_pool.gd`, 수집 `pool_builder.gd` + 봇 `bot.gd`), 예비 적 생성(`enemy_gen.gd`, 풀이 없을 때만) |
 | `data/opponent_pool.json` | 상대 출전 풀. `tools/build_pool.gd` 로 만든다(봇 128명 대전, 라운드별 출전 세팅) |
 | `scripts/ui/` | 그리기 전용: 3D 전투 재생 `battle_view_3d.gd`(재생 중 유닛 상태 `live_unit`), 상세 패널 체력·쿨타임 막대 `live_stats.gd`, 가방 그리드, 스타일 `ui_style.gd`(색·테마·버튼 변형·등급 색), 도형 아이콘 `game_icon.gd`, 칸 모양 미리보기 `shape_icon.gd`. 전투 결과는 `BattleSim` 이 미리 계산하고 화면은 재생만 한다 |
 | `assets/` | 그림·소리·글꼴. 한글 글꼴은 `assets/theme.tres`(메인 장면 theme)로 적용 |
